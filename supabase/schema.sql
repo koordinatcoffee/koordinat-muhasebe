@@ -58,6 +58,78 @@ create index if not exists transactions_date_idx on public.transactions (date);
 create index if not exists transactions_type_date_idx on public.transactions (type, date);
 
 -- ---------------------------------------------------------------------------
+-- planned_payments: payments to be made (who, how much, when).
+--   transaction_id is set when the payment is made; it points to the "payment"
+--   transaction created for it. Deleting that transaction makes it pending again.
+-- ---------------------------------------------------------------------------
+create table if not exists public.planned_payments (
+  id uuid primary key default gen_random_uuid(),
+  due_date date not null,
+  category text,
+  counterparty text not null,
+  payment_method text not null default 'bank_transfer'
+    check (payment_method in ('cash', 'card', 'bank_transfer', 'other')),
+  amount numeric(14, 2) not null check (amount > 0),
+  description text,
+  transaction_id uuid unique references public.transactions (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists planned_payments_due_date_idx on public.planned_payments (due_date);
+
+-- ---------------------------------------------------------------------------
+-- Invoice details on payments. A payment can cover an invoice partly:
+--   invoice_amount is the invoice total; the remaining debt of an invoice is
+--   invoice_amount − sum of the payments with the same counterparty + invoice_no.
+-- ---------------------------------------------------------------------------
+alter table public.transactions add column if not exists invoice_no text;
+alter table public.transactions add column if not exists invoice_amount numeric(14, 2);
+alter table public.planned_payments add column if not exists invoice_no text;
+alter table public.planned_payments add column if not exists invoice_amount numeric(14, 2);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'transactions_invoice_amount_check') then
+    alter table public.transactions
+      add constraint transactions_invoice_amount_check check (invoice_amount > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'planned_payments_invoice_amount_check') then
+    alter table public.planned_payments
+      add constraint planned_payments_invoice_amount_check check (invoice_amount > 0);
+  end if;
+end;
+$$;
+
+create index if not exists transactions_invoice_idx on public.transactions (counterparty, invoice_no)
+  where invoice_no is not null;
+
+-- invoice_balances: paid and remaining amount of each invoice (made payments only)
+create or replace view public.invoice_balances with (security_invoker = true) as
+select counterparty,
+       invoice_no,
+       max(invoice_amount) as invoice_amount,
+       sum(amount) as paid_amount,
+       max(invoice_amount) - sum(amount) as remaining_amount,
+       max(date) as last_payment_date
+from public.transactions
+where type = 'payment' and counterparty is not null and invoice_no is not null
+group by counterparty, invoice_no;
+
+-- ---------------------------------------------------------------------------
+-- counterparties: contact details of the suppliers / people that are paid.
+-- Matched to payments by name (transactions.counterparty, planned_payments.counterparty).
+-- ---------------------------------------------------------------------------
+create table if not exists public.counterparties (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  iban text,
+  phone text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- updated_at trigger
 -- ---------------------------------------------------------------------------
 create or replace function public.set_updated_at()
@@ -76,12 +148,52 @@ drop trigger if exists transactions_set_updated_at on public.transactions;
 create trigger transactions_set_updated_at before update on public.transactions
   for each row execute function public.set_updated_at();
 
+drop trigger if exists planned_payments_set_updated_at on public.planned_payments;
+create trigger planned_payments_set_updated_at before update on public.planned_payments
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists counterparties_set_updated_at on public.counterparties;
+create trigger counterparties_set_updated_at before update on public.counterparties
+  for each row execute function public.set_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- pay_planned_payment: records a planned payment as a made payment in one step
+-- (creates the "payment" transaction and links it).
+-- ---------------------------------------------------------------------------
+create or replace function public.pay_planned_payment(planned_id uuid, paid_on date)
+returns public.transactions
+language plpgsql as $$
+declare
+  planned public.planned_payments;
+  payment public.transactions;
+begin
+  select * into planned from public.planned_payments where id = planned_id for update;
+  if not found then
+    raise exception 'Yapılacak ödeme bulunamadı.';
+  end if;
+  if planned.transaction_id is not null then
+    raise exception 'Bu ödeme zaten yapılmış.';
+  end if;
+
+  insert into public.transactions
+    (date, type, category, counterparty, payment_method, amount, description, invoice_no, invoice_amount)
+  values (paid_on, 'payment', planned.category, planned.counterparty, planned.payment_method,
+          planned.amount, planned.description, planned.invoice_no, planned.invoice_amount)
+  returning * into payment;
+
+  update public.planned_payments set transaction_id = payment.id where id = planned_id;
+  return payment;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Row level security: only signed-in users can read and write
 -- ---------------------------------------------------------------------------
 alter table public.categories enable row level security;
 alter table public.daily_registers enable row level security;
 alter table public.transactions enable row level security;
+alter table public.planned_payments enable row level security;
+alter table public.counterparties enable row level security;
 
 drop policy if exists "authenticated_full_access" on public.categories;
 create policy "authenticated_full_access" on public.categories
@@ -93,6 +205,14 @@ create policy "authenticated_full_access" on public.daily_registers
 
 drop policy if exists "authenticated_full_access" on public.transactions;
 create policy "authenticated_full_access" on public.transactions
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated_full_access" on public.planned_payments;
+create policy "authenticated_full_access" on public.planned_payments
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "authenticated_full_access" on public.counterparties;
+create policy "authenticated_full_access" on public.counterparties
   for all to authenticated using (true) with check (true);
 
 -- ---------------------------------------------------------------------------

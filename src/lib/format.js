@@ -74,3 +74,20 @@ export const TRANSACTION_TYPE_LABELS = {
   expense: 'Gider',
   payment: 'Ödeme',
 };
+
+/** "tr12 0006 2000..." → "TR120006200..." (no spaces, upper case) */
+export const normalizeIban = (input) => String(input ?? '').replace(/\s+/g, '').toUpperCase();
+
+/** Checks the IBAN structure and its mod-97 check digits; Turkish IBANs must be 26 characters */
+export function isValidIban(input) {
+  const iban = normalizeIban(input);
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) return false;
+  if (iban.startsWith('TR') && iban.length !== 26) return false;
+  const digits = `${iban.slice(4)}${iban.slice(0, 4)}`.replace(/[A-Z]/g, (letter) => letter.charCodeAt(0) - 55);
+  let remainder = 0;
+  for (const digit of digits) remainder = (remainder * 10 + Number(digit)) % 97;
+  return remainder === 1;
+}
+
+/** "TR120006200000000000000000" → "TR12 0006 2000 0000 0000 0000 00" */
+export const formatIban = (input) => normalizeIban(input).replace(/(.{4})(?=.)/g, '$1 ');

@@ -78,6 +78,12 @@ export async function listRecentTransactions(limit = 10) {
   );
 }
 
+/** Invoice fields shared by payments and planned payments */
+const toInvoiceColumns = (fields) => ({
+  invoice_no: fields.invoiceNo?.trim() || null,
+  invoice_amount: fields.invoiceAmount || null,
+});
+
 export async function saveTransaction({ id, ...fields }) {
   const row = {
     date: fields.date,
@@ -87,28 +93,101 @@ export async function saveTransaction({ id, ...fields }) {
     payment_method: fields.paymentMethod,
     amount: fields.amount,
     description: fields.description?.trim() || null,
+    ...toInvoiceColumns(fields),
   };
   const query = id
     ? supabase.from('transactions').update(row).eq('id', id)
     : supabase.from('transactions').insert(row);
-  return unwrap(await query.select().single());
+  const saved = unwrap(await query.select().single());
+  await saveCounterpartyDetails(fields);
+  return saved;
 }
 
 export async function deleteTransaction(id) {
   unwrap(await supabase.from('transactions').delete().eq('id', id));
 }
 
-/** Previously used supplier / person names, for autocomplete */
+/** Paid and remaining amount per invoice: [{ counterparty, invoice_no, invoice_amount, paid_amount, remaining_amount }] */
+export const listInvoiceBalances = () =>
+  fetchAllPages(() =>
+    supabase.from('invoice_balances').select('*').order('counterparty').order('invoice_no'),
+  );
+
+// ---------------------------------------------------------------- Counterparties
+
+/**
+ * Previously used suppliers / people with their contact details, for autocomplete:
+ * [{ name, iban, phone }] sorted by name
+ */
 export async function listCounterparties() {
-  const rows = unwrap(
-    await supabase
+  const [details, paidNames, plannedNames] = await Promise.all([
+    supabase.from('counterparties').select('name, iban, phone').limit(PAGE_SIZE).then(unwrap),
+    supabase
       .from('transactions')
       .select('counterparty')
       .not('counterparty', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(1000),
+      .limit(PAGE_SIZE)
+      .then(unwrap),
+    supabase.from('planned_payments').select('counterparty').limit(PAGE_SIZE).then(unwrap),
+  ]);
+  const byName = new Map(details.map((row) => [row.name, row]));
+  for (const { counterparty } of [...paidNames, ...plannedNames]) {
+    if (!byName.has(counterparty)) byName.set(counterparty, { name: counterparty, iban: null, phone: null });
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+}
+
+/** Stores the IBAN / phone of a counterparty (matched by name) */
+async function saveCounterpartyDetails({ counterparty, iban, phone }) {
+  const name = counterparty?.trim();
+  if (!name) return;
+  const row = { name, iban: iban || null, phone: phone?.trim() || null };
+  const { data: existing } = await supabase.from('counterparties').select('id').eq('name', name).maybeSingle();
+  // Do not create empty contact cards; existing cards are kept in sync (also when cleared)
+  if (!existing && !row.iban && !row.phone) return;
+  unwrap(await supabase.from('counterparties').upsert(row, { onConflict: 'name' }));
+}
+
+// -------------------------------------------------------------- Planned payments
+
+/** Payments not made yet, earliest due date first */
+export const listPendingPlannedPayments = () =>
+  fetchAllPages(() =>
+    supabase
+      .from('planned_payments')
+      .select('*')
+      .is('transaction_id', null)
+      .order('due_date')
+      .order('created_at')
+      .order('id'),
   );
-  return [...new Set(rows.map((row) => row.counterparty))].sort((a, b) => a.localeCompare(b, 'tr'));
+
+export async function savePlannedPayment({ id, ...fields }) {
+  const row = {
+    due_date: fields.dueDate,
+    category: fields.category || null,
+    counterparty: fields.counterparty.trim(),
+    payment_method: fields.paymentMethod,
+    amount: fields.amount,
+    description: fields.description?.trim() || null,
+    ...toInvoiceColumns(fields),
+  };
+  const query = id
+    ? supabase.from('planned_payments').update(row).eq('id', id)
+    : supabase.from('planned_payments').insert(row);
+  const saved = unwrap(await query.select().single());
+  await saveCounterpartyDetails(fields);
+  return saved;
+}
+
+export async function deletePlannedPayment(id) {
+  unwrap(await supabase.from('planned_payments').delete().eq('id', id));
+}
+
+/** Records the planned payment as made on paidOn; returns the created payment transaction */
+export async function payPlannedPayment(id, paidOn) {
+  return unwrap(await supabase.rpc('pay_planned_payment', { planned_id: id, paid_on: paidOn }));
 }
 
 // -------------------------------------------------------------------- Categories

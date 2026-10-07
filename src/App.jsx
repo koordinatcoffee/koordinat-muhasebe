@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage';
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const DailyRegisterPage = lazy(() => import('./pages/DailyRegisterPage'));
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage'));
+const PlannedPaymentsPage = lazy(() => import('./pages/PlannedPaymentsPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
@@ -46,8 +47,8 @@ export default function App() {
       <Route element={<AppLayout user={session.user} />}>
         <Route index element={<DashboardPage />} />
         <Route path={ROUTES.dailyRegister} element={<DailyRegisterPage />} />
-        <Route path={ROUTES.ledger} element={<TransactionsPage mode="ledger" />} />
-        <Route path={ROUTES.payments} element={<TransactionsPage mode="payments" />} />
+        <Route path={ROUTES.payments} element={<TransactionsPage />} />
+        <Route path={ROUTES.plannedPayments} element={<PlannedPaymentsPage />} />
         <Route path={ROUTES.reports} element={<ReportsPage />} />
         <Route path={ROUTES.settings} element={<SettingsPage />} />
         <Route path="*" element={<Navigate to={ROUTES.dashboard} replace />} />

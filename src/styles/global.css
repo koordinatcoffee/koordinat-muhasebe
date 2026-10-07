@@ -216,9 +216,13 @@ code { background: var(--color-primary-soft); padding: 1px 5px; border-radius: 4
 .form-grid__wide { grid-column: span 3; }
 .form-grid__half { grid-column: span 2; }
 .form-grid__submit { gap: 6px; }
+.form-grid__full { grid-column: 1 / -1; }
 
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field__label { font-size: 12px; font-weight: 600; color: var(--color-text-muted); }
+.field__error { font-size: 12px; color: var(--color-negative); }
+.field input[aria-invalid='true'] { border-color: var(--color-negative); }
+.mono { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; white-space: nowrap; }
 
 /* Text-like inputs and selects share one height, border and focus style */
 input:where(:not([type='checkbox']):not([type='radio'])),

@@ -8,8 +8,8 @@ React + Vite ile web'de geliştirilir, Supabase'de veri tutar ve Electron ile Wi
 | Sayfa | Ne girilir |
 |---|---|
 | **Günlük Kasa** | Her gün için **nakit** + **kredi kartı** satış toplamı. Toplam otomatik hesaplanır. Bir güne tek kayıt girilir; aynı tarih seçilirse kayıt güncellenir. İsteğe bağlı olarak tutar ürün gruplarına (sıcak kahve, soğuk içecek, tatlı…) dağıtılabilir. |
-| **Gelir - Gider Defteri** | Kasa dışı gelirler (toptan satış vb.) ve harcamalar (peçete, süt, kira…). Kategori, firma, ödeme yöntemi, açıklama. |
 | **Yapılan Ödemeler** | Kime, ne kadar, hangi yöntemle ödendi (tedarikçi, kira, maaş, vergi…). "Kime ne ödedik" özeti. |
+| **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek. Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; o ödeme silinirse tekrar bekleyene döner. |
 | **Raporlar** | Aylık / yıllık / tarih aralığı kâr-zarar, kâr marjı, gider dağılımı, kime ne ödendiği, ödeme yöntemine göre giriş-çıkış, aylık veya günlük döküm, tüm hareketler. **Yazdır / PDF** ve **Excel'e aktar**. |
 | **Ayarlar** | Gelir ve gider kategorileri (ana grup → alt kalem). |
 
@@ -31,8 +31,8 @@ Net Kâr/Zarar = Toplam Gelir − Toplam Gider
 Kâr Marjı    = Net / Toplam Gelir
 ```
 
-> Bir harcamayı **ya** Gider Defterine **ya da** Ödemelere girin, ikisine birden değil — ikisi de toplam gidere eklenir.
-> Günlük satışlar Kasa'ya girilir; aynı satışı ayrıca "Gelir" olarak girmeyin.
+> Yapılacak ödemeler, **Ödendi** denene kadar kâr-zarara girmez.
+> Eski Gelir - Gider Defteri kayıtları (`income` / `expense`) raporlarda hesaba katılmaya devam eder.
 
 ## Kurulum
 
@@ -86,6 +86,7 @@ Arayüz masaüstü, tablet ve telefonda çalışır:
 | `categories` | `name`, `type` (`income` / `expense`), `group_name`, `sort_order` |
 | `daily_registers` | Günlük kasa: `date` (tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
 | `transactions` | `date`, `type` (`income` / `expense` / `payment`), `category`, `counterparty`, `payment_method` (`cash` / `card` / `bank_transfer` / `other`), `amount`, `description` |
+| `planned_payments` | Yapılacak ödemeler: `due_date`, `category`, `counterparty`, `payment_method`, `amount`, `description`, `transaction_id` (ödendiğinde oluşan `payment` kaydı; boşsa bekliyor). `pay_planned_payment(planned_id, paid_on)` fonksiyonu ödemeyi tek adımda kaydeder. |
 
 Kategori ve grup adları kullanıcıya görünen etiketlerdir (Türkçe); tablo, sütun ve değer adları İngilizcedir.
 
@@ -102,7 +103,8 @@ src/
   hooks/useAsync.js               Async data loading hook
   lib/
     supabaseClient.js             Supabase client
-    api.js                        Data access (daily registers, transactions, categories)
+    api.js                        Data access (daily registers, transactions, planned payments, categories)
+    plannedPayments.js            Due status and totals of planned payments
     summary.js                    Profit/loss calculations, monthly/daily breakdowns
     categories.js                 Category groups, cost ratios, grouping helpers
     format.js                     Currency, date, amount parsing, labels
@@ -111,7 +113,7 @@ src/
     layout/AppLayout.jsx          Sidebar, mobile top bar and drawer
     reports/GroupedAmountTable.jsx
     ui/                           PageHeader, StatCard, MoneyInput, MonthPicker, CategorySelect, Alert, EmptyState
-  pages/                          Login, Dashboard, DailyRegister, Transactions (ledger + payments), Reports, Settings
+  pages/                          Login, Dashboard, DailyRegister, Transactions (payments made), PlannedPayments, Reports, Settings
   assets/brand/                   logo-compact.png, logo-full.png
   styles/global.css               Design tokens, layout, responsive and print styles
 ```
