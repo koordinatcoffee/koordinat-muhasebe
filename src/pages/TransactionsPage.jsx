@@ -9,7 +9,7 @@ import {
 import { categoryTypeFor } from '../lib/categories';
 import { useAsync } from '../hooks/useAsync';
 import {
-  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader,
+  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, toUserMessage,
 } from '../components/ui';
 
 const PAGE_MODES = {
@@ -99,7 +99,7 @@ function TransactionsView({ config, isPaymentsMode }) {
       transactions.reload();
       if (form.counterparty && !lookups.data?.counterparties.includes(form.counterparty.trim())) lookups.reload();
     } catch (error) {
-      setFeedback({ variant: 'error', message: error.message });
+      setFeedback({ variant: 'error', message: toUserMessage(error) });
     } finally {
       setIsSaving(false);
     }
@@ -119,7 +119,7 @@ function TransactionsView({ config, isPaymentsMode }) {
       if (form.id === transaction.id) setForm(createEmptyForm(form.type));
       transactions.reload();
     } catch (error) {
-      setFeedback({ variant: 'error', message: error.message });
+      setFeedback({ variant: 'error', message: toUserMessage(error) });
     }
   }
 

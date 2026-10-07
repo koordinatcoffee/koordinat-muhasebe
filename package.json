@@ -8,53 +8,75 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/check-env.mjs && vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently -k -n web,electron \"vite\" \"wait-on tcp:5173 && cross-env ELECTRON_DEV=1 electron .\"",
-    "electron:start": "vite build && electron .",
-    "dist:mac": "vite build && electron-builder --mac",
-    "dist:win": "vite build && electron-builder --win",
-    "dist": "vite build && electron-builder --mac --win"
+    "electron:start": "npm run build && electron .",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist": "npm run build && electron-builder --mac --win"
   },
   "build": {
     "appId": "com.koordinat.muhasebe",
     "productName": "Koordinat Muhasebe",
+    "copyright": "© Koordinat Coffee Factory",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "compression": "maximum",
     "directories": {
+      "buildResources": "build",
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "package.json"
     ],
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "category": "public.app-category.finance"
     },
+    "dmg": {
+      "title": "${productName} ${version}"
+    },
     "win": {
       "target": [
-        "nsis"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Koordinat Muhasebe"
     }
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.117.3",
-    "lucide-react": "^1.52.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "react-router-dom": "^7.18.4"
-  },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.117.3",
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",
     "electron": "^44.6.0",
     "electron-builder": "^26.15.3",
+    "lucide-react": "^1.52.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4",
     "vite": "^8.3.3",
     "wait-on": "^9.5.1"
   }

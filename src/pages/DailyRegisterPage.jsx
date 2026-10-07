@@ -8,7 +8,7 @@ import {
 } from '../lib/format';
 import { groupCategories, NON_REGISTER_INCOME_GROUPS } from '../lib/categories';
 import { useAsync } from '../hooks/useAsync';
-import { Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader } from '../components/ui';
+import { Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, toUserMessage } from '../components/ui';
 
 const createEmptyForm = (date) => ({ date, cash: '', card: '', salesBreakdown: {}, note: '' });
 
@@ -55,7 +55,7 @@ export default function DailyRegisterPage() {
         );
         if (hasBreakdown(register)) setIsBreakdownOpen(true);
       })
-      .catch((error) => !isCancelled && setFeedback({ variant: 'error', message: error.message }));
+      .catch((error) => !isCancelled && setFeedback({ variant: 'error', message: toUserMessage(error) }));
     return () => {
       isCancelled = true;
     };
@@ -93,7 +93,7 @@ export default function DailyRegisterPage() {
       setFeedback({ variant: 'success', message: `${formatDate(form.date)} kasası kaydedildi: ${formatCurrency(saved.total)}` });
       registers.reload();
     } catch (error) {
-      setFeedback({ variant: 'error', message: error.message });
+      setFeedback({ variant: 'error', message: toUserMessage(error) });
     } finally {
       setIsSaving(false);
     }
@@ -109,7 +109,7 @@ export default function DailyRegisterPage() {
       }
       registers.reload();
     } catch (error) {
-      setFeedback({ variant: 'error', message: error.message });
+      setFeedback({ variant: 'error', message: toUserMessage(error) });
     }
   }
 

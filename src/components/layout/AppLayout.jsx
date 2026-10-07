@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { LogOut, Menu, X } from 'lucide-react';
+import { LogOut, Menu, WifiOff } from 'lucide-react';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { NAVIGATION_ITEMS } from '../../config/navigation';
 import { supabase } from '../../lib/supabaseClient';
 import compactLogo from '../../assets/brand/logo-compact.png';
@@ -8,6 +9,7 @@ import compactLogo from '../../assets/brand/logo-compact.png';
 export default function AppLayout({ user }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  const isOnline = useOnlineStatus();
 
   // Close the mobile drawer after navigating
   useEffect(() => setIsMenuOpen(false), [location.pathname]);
@@ -50,14 +52,6 @@ export default function AppLayout({ user }) {
       <aside id="app-sidebar" className={`sidebar no-print ${isMenuOpen ? 'is-open' : ''}`}>
         <div className="sidebar__header">
           <img src={compactLogo} alt="Koordinat Coffee Factory" className="sidebar__logo" />
-          <button
-            type="button"
-            className="btn btn--ghost btn--icon sidebar__close"
-            onClick={() => setIsMenuOpen(false)}
-            aria-label="Menüyü kapat"
-          >
-            <X size={20} />
-          </button>
         </div>
         <div className="sidebar__caption">Muhasebe · Gelir Gider Takibi</div>
 
@@ -80,7 +74,15 @@ export default function AppLayout({ user }) {
       </aside>
 
       <main className="main-content">
-        <Outlet />
+        {!isOnline && (
+          <div className="alert alert--warning offline-banner no-print" role="status">
+            <WifiOff size={16} />
+            İnternet bağlantısı yok. Kayıtlar Supabase'e ulaşamaz; bağlantı gelince sayfayı yenileyin.
+          </div>
+        )}
+        <Suspense fallback={<p className="text-muted">Yükleniyor…</p>}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );

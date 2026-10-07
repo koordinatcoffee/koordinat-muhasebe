@@ -1,4 +1,4 @@
-export { default as Alert, ErrorAlert } from './Alert';
+export { default as Alert, ErrorAlert, toUserMessage } from './Alert';
 export { default as CategorySelect } from './CategorySelect';
 export { default as EmptyState } from './EmptyState';
 export { default as MoneyInput } from './MoneyInput';

@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { lazy, useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
 import { ROUTES } from './config/navigation';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import DailyRegisterPage from './pages/DailyRegisterPage';
-import TransactionsPage from './pages/TransactionsPage';
-import ReportsPage from './pages/ReportsPage';
-import SettingsPage from './pages/SettingsPage';
+
+// Pages are code-split so the first screen loads only what it needs
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const DailyRegisterPage = lazy(() => import('./pages/DailyRegisterPage'));
+const TransactionsPage = lazy(() => import('./pages/TransactionsPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
 const SESSION_LOADING = undefined;
 

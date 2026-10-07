@@ -30,6 +30,7 @@
   --shadow-sm: 0 1px 2px rgba(28, 42, 39, 0.04), 0 2px 8px rgba(28, 42, 39, 0.04);
   --shadow-lg: 0 10px 40px rgba(28, 42, 39, 0.18);
 
+  --control-height: 40px;
   --sidebar-width: 256px;
   --topbar-height: 60px;
   --page-gutter: 32px;
@@ -82,9 +83,8 @@ code { background: var(--color-primary-soft); padding: 1px 5px; border-radius: 4
   border-right: 1px solid var(--color-border);
   overflow-y: auto;
 }
-.sidebar__header { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
+.sidebar__header { padding: 0 8px; }
 .sidebar__logo { width: 148px; height: auto; }
-.sidebar__close.btn { display: none; }
 .sidebar__caption {
   margin: 10px 8px 20px;
   font-size: 11.5px;
@@ -220,27 +220,74 @@ code { background: var(--color-primary-soft); padding: 1px 5px; border-radius: 4
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field__label { font-size: 12px; font-weight: 600; color: var(--color-text-muted); }
 
-input, select {
+/* Text-like inputs and selects share one height, border and focus style */
+input:where(:not([type='checkbox']):not([type='radio'])),
+select {
   width: 100%;
-  min-height: 40px;
-  padding: 9px 11px;
+  height: var(--control-height);
+  padding: 0 12px;
   font: inherit;
+  line-height: 1.2;
   color: inherit;
-  background: var(--color-surface);
+  background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+input:where(:not([type='checkbox']):not([type='radio'])):hover,
+select:hover { border-color: var(--color-border-strong); }
+input:focus-visible, select:focus-visible,
 input:focus, select:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(4, 110, 98, 0.14); }
+input::placeholder { color: #9aa6a2; }
 input.is-invalid { border-color: var(--color-negative); }
-input[type='checkbox'] { width: auto; min-height: auto; accent-color: var(--color-primary); }
+input:disabled, select:disabled { background-color: var(--color-surface-muted); cursor: not-allowed; }
+
+/* Custom chevron replaces the native select arrow so it sits inside the field */
+select {
+  padding-right: 36px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a76' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+}
+select::-ms-expand { display: none; }
+select option, select optgroup { color: var(--color-text); background: var(--color-surface); }
+
+/* Date inputs: left-aligned value, compact calendar icon inside the field */
+input[type='date'] { min-width: 0; padding-right: 8px; cursor: text; }
+input[type='date']::-webkit-date-and-time-value { text-align: left; }
+input[type='date']::-webkit-datetime-edit { flex: 1; padding: 0; }
+input[type='date']::-webkit-calendar-picker-indicator {
+  margin-left: 6px;
+  padding: 4px;
+  border-radius: 6px;
+  opacity: 0.55;
+  cursor: pointer;
+}
+input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 0.9; background-color: var(--color-surface-muted); }
+
+/* Search inputs: native styling removed, clear button kept small */
+input[type='search']::-webkit-search-decoration { display: none; }
+input[type='search']::-webkit-search-cancel-button { cursor: pointer; opacity: 0.6; }
+
+/* Datalist (autocomplete) inputs: hide Chrome's dropdown arrow */
+input[list]::-webkit-calendar-picker-indicator { display: none !important; }
+
+input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var(--color-primary); cursor: pointer; }
 
 .money-input { position: relative; }
 .money-input input { padding-right: 30px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .money-input__suffix { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); pointer-events: none; }
 
 .total-display {
-  min-height: 40px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -330,7 +377,7 @@ input[type='checkbox'] { width: auto; min-height: auto; accent-color: var(--colo
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: var(--control-height);
   padding: 9px 14px;
   font: inherit;
   font-weight: 600;
@@ -350,7 +397,7 @@ input[type='checkbox'] { width: auto; min-height: auto; accent-color: var(--colo
 .btn--ghost { background: transparent; border-color: transparent; }
 .btn--ghost:hover:not(:disabled) { background: var(--color-surface-muted); border-color: var(--color-border); }
 .btn--sm { min-height: 30px; padding: 4px 10px; font-size: 12.5px; }
-.btn--icon { min-height: 40px; width: 40px; padding: 0; }
+.btn--icon { min-height: var(--control-height); width: var(--control-height); padding: 0; }
 .btn--block { width: 100%; }
 .btn.text-negative { color: var(--color-negative); }
 
@@ -474,7 +521,6 @@ input[type='checkbox'] { width: auto; min-height: auto; accent-color: var(--colo
     box-shadow: none;
   }
   .sidebar.is-open { transform: translateX(0); box-shadow: var(--shadow-lg); }
-  .sidebar__close.btn { display: inline-flex; }
 
   .sidebar-backdrop {
     display: block;
@@ -495,8 +541,9 @@ input[type='checkbox'] { width: auto; min-height: auto; accent-color: var(--colo
   h1 { font-size: 21px; }
 
   /* 16px inputs prevent iOS zoom on focus */
-  input, select { font-size: 16px; min-height: 44px; }
-  .btn { min-height: 44px; }
+  :root { --control-height: 44px; }
+  input, select { font-size: 16px; }
+
   .btn--sm { min-height: 36px; }
 
   .main-content { padding-bottom: 40px; }
@@ -598,3 +645,6 @@ input[type='checkbox'] { width: auto; min-height: auto; accent-color: var(--colo
   .data-table td, .data-table th { padding: 4px 6px; }
   .data-table tbody tr:hover { background: none; }
 }
+
+/* Connectivity warning shown above page content */
+.offline-banner { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; }
