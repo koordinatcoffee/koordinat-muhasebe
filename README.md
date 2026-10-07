@@ -116,6 +116,7 @@ src/
   main.jsx, App.jsx               Entry point, auth gate, routes
   config/navigation.js            Route paths and sidebar items
   hooks/useAsync.js               Async data loading hook
+  hooks/useAccess.js              Signed-in user's profile and page access
   lib/
     supabaseClient.js             Supabase client
     api.js                        Data access (daily registers, transactions, planned payments, categories)
@@ -129,6 +130,7 @@ src/
     layout/AppLayout.jsx          Sidebar, mobile top bar and drawer
     payments/PaymentFields.jsx    Counterparty (IBAN, phone) and invoice form fields
     reports/GroupedAmountTable.jsx
+    settings/                     PasswordChangeForm, UserManager
     ui/                           PageHeader, StatCard, MoneyInput, MonthPicker, CategorySelect, Alert, EmptyState
   pages/                          Login, Dashboard, DailyRegister, Transactions (payments made), PlannedPayments, Reports, Settings
   assets/brand/                   logo-compact.png, logo-full.png
