@@ -1,0 +1,61 @@
+{
+  "name": "koordinat-muhasebe",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Koordinat Coffee Factory - Gelir / Gider / Kasa takip uygulaması",
+  "author": "Koordinat Coffee Factory",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k -n web,electron \"vite\" \"wait-on tcp:5173 && cross-env ELECTRON_DEV=1 electron .\"",
+    "electron:start": "vite build && electron .",
+    "dist:mac": "vite build && electron-builder --mac",
+    "dist:win": "vite build && electron-builder --win",
+    "dist": "vite build && electron-builder --mac --win"
+  },
+  "build": {
+    "appId": "com.koordinat.muhasebe",
+    "productName": "Koordinat Muhasebe",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.finance"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
+    "lucide-react": "^1.52.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.5",
+    "cross-env": "^10.1.0",
+    "electron": "^44.6.0",
+    "electron-builder": "^26.15.3",
+    "vite": "^8.3.3",
+    "wait-on": "^9.5.1"
+  }
+}
