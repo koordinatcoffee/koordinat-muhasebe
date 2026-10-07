@@ -1,0 +1,48 @@
+name: Desktop build
+
+# Builds the macOS .dmg and Windows .exe installers.
+# Run manually from the Actions tab, or push a tag such as v1.0.1.
+# Required repository secrets: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist:mac
+            artifact: macos-installers
+            files: release/*.dmg
+          - os: windows-latest
+            script: dist:win
+            artifact: windows-installer
+            files: release/*.exe
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run ${{ matrix.script }}
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error

@@ -55,13 +55,18 @@ npm run electron:dev   # Aynı uygulama Electron penceresinde (canlı yenileme)
 ## Masaüstü uygulaması (build)
 
 ```bash
-npm run dist:mac   # release/ altında .dmg
-npm run dist:win   # release/ altında Windows kurulum (.exe)
+npm run dist:mac   # release/ altında .dmg (Apple Silicon + Intel)
+npm run dist:win   # release/ altında Windows kurulum (.exe, x64)
 npm run dist       # ikisi birden
 ```
 
-- Supabase adresi ve anahtarı build sırasında uygulamaya gömülür; `.env` build öncesi dolu olmalı.
-- Windows kurulumu macOS'tan da alınabilir; sorun çıkarsa Windows bilgisayarda `npm install && npm run dist:win` çalıştırın.
+- Supabase adresi ve anahtarı build sırasında uygulamaya gömülür; `.env` boşsa build durur (`scripts/check-env.mjs`).
+- Masaüstü uygulaması her zaman canlı Supabase verisiyle çalışır; internet yoksa üstte uyarı gösterilir.
+- **Windows .exe Apple Silicon Mac'te:** NSIS aracı Intel ikilisidir, önce Rosetta kurulmalıdır:
+  `softwareupdate --install-rosetta --agree-to-license` → ardından `npm run dist:win`.
+- **GitHub Actions ile:** `.github/workflows/desktop-build.yml` Mac'te `.dmg`, Windows'ta `.exe` üretir.
+  Repo → Settings → Secrets → Actions altına `VITE_SUPABASE_URL` ve `VITE_SUPABASE_ANON_KEY` ekleyin;
+  Actions sekmesinden "Desktop build" → Run workflow (veya `v1.0.1` gibi bir tag push'layın). Çıktılar "Artifacts" altında.
 - Uygulama ikonu `build/icon.png` (1024×1024, `build/icon-source.jpeg` rozet logosundan üretildi); electron-builder mac ve Windows ikonlarını buradan oluşturur.
 - İmzasız macOS uygulaması ilk açılışta uyarı verebilir: Finder'da sağ tık → Aç.
 

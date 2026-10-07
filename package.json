@@ -12,9 +12,9 @@
     "preview": "vite preview",
     "electron:dev": "concurrently -k -n web,electron \"vite\" \"wait-on tcp:5173 && cross-env ELECTRON_DEV=1 electron .\"",
     "electron:start": "npm run build && electron .",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist": "npm run build && electron-builder --mac --win"
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist": "npm run build && electron-builder --mac --win --publish never"
   },
   "build": {
     "appId": "com.koordinat.muhasebe",
