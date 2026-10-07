@@ -11,6 +11,7 @@ import { summarize } from '../lib/summary';
 import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { ROUTES } from '../config/navigation';
+import { useAccess } from '../hooks/useAccess';
 import { Alert, EmptyState, ErrorAlert, PageHeader, StatCard, toUserMessage } from '../components/ui';
 
 const RECENT_TRANSACTION_LIMIT = 8;
@@ -20,6 +21,7 @@ export default function DashboardPage() {
   const today = todayISO();
   const now = new Date();
   const currentMonth = monthRange(now.getFullYear(), now.getMonth() + 1);
+  const { canAccess } = useAccess();
   const monthTitle = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState(null);
@@ -161,9 +163,13 @@ export default function DashboardPage() {
         description={`Bugün ${formatDate(today)}`}
         actions={
           <>
-            <Link className="btn btn--primary" to={ROUTES.dailyRegister}><Plus size={16} />Günlük kasa</Link>
-            <Link className="btn" to={ROUTES.payments}><Plus size={16} />Yapılan ödeme</Link>
-            <Link className="btn" to={ROUTES.plannedPayments}><Plus size={16} />Yapılacak ödeme</Link>
+            {canAccess('daily-register') && (
+              <Link className="btn btn--primary" to={ROUTES.dailyRegister}><Plus size={16} />Günlük kasa</Link>
+            )}
+            {canAccess('payments') && <Link className="btn" to={ROUTES.payments}><Plus size={16} />Yapılan ödeme</Link>}
+            {canAccess('planned-payments') && (
+              <Link className="btn" to={ROUTES.plannedPayments}><Plus size={16} />Yapılacak ödeme</Link>
+            )}
             <button type="button" className="btn" onClick={exportToExcel} disabled={!data || isExporting}>
               <FileSpreadsheet size={16} />{isExporting ? 'Hazırlanıyor…' : "Excel'e aktar"}
             </button>
@@ -178,14 +184,15 @@ export default function DashboardPage() {
         <>
           {data.isTodayRegisterMissing && (
             <Alert variant="warning">
-              Bugünün kasası henüz girilmedi. <Link to={ROUTES.dailyRegister}>Şimdi gir →</Link>
+              Bugünün kasası henüz girilmedi.{' '}
+              {canAccess('daily-register') && <Link to={ROUTES.dailyRegister}>Şimdi gir →</Link>}
             </Alert>
           )}
           {data.plannedSummary.overdue.count > 0 && (
             <Alert variant="error">
               Vadesi geçmiş {data.plannedSummary.overdue.count} ödeme var:{' '}
               <b>{formatCurrency(data.plannedSummary.overdue.amount)}</b>.{' '}
-              <Link to={ROUTES.plannedPayments}>Yapılacak ödemeler →</Link>
+              {canAccess('planned-payments') && <Link to={ROUTES.plannedPayments}>Yapılacak ödemeler →</Link>}
             </Alert>
           )}
 
@@ -225,7 +232,7 @@ export default function DashboardPage() {
           <section className="card">
             <div className="card__header">
               <h3>Yaklaşan ödemeler (önümüzdeki {UPCOMING_DAYS} gün)</h3>
-              <Link to={ROUTES.plannedPayments} className="link">Tümünü gör →</Link>
+              {canAccess('planned-payments') && <Link to={ROUTES.plannedPayments} className="link">Tümünü gör →</Link>}
             </div>
             {data.upcomingPayments.length === 0 ? (
               <EmptyState>Yaklaşan ödeme yok.</EmptyState>
@@ -266,7 +273,7 @@ export default function DashboardPage() {
           <section className="card">
             <div className="card__header">
               <h3>Son hareketler</h3>
-              <Link to={ROUTES.payments} className="link">Tümünü gör →</Link>
+              {canAccess('payments') && <Link to={ROUTES.payments} className="link">Tümünü gör →</Link>}
             </div>
             {data.recentTransactions.length === 0 ? (
               <EmptyState>Henüz hareket girilmedi.</EmptyState>

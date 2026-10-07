@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { LogOut, Menu, WifiOff } from 'lucide-react';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { NAVIGATION_ITEMS } from '../../config/navigation';
+import { useAccess } from '../../hooks/useAccess';
 import { supabase } from '../../lib/supabaseClient';
 import compactLogo from '../../assets/brand/logo-compact.png';
 
@@ -10,6 +11,7 @@ export default function AppLayout({ user }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const isOnline = useOnlineStatus();
+  const { profile, canAccess } = useAccess();
 
   // Close the mobile drawer after navigating
   useEffect(() => setIsMenuOpen(false), [location.pathname]);
@@ -56,7 +58,7 @@ export default function AppLayout({ user }) {
         <div className="sidebar__caption">Muhasebe · Gelir Gider Takibi</div>
 
         <nav className="sidebar__nav">
-          {NAVIGATION_ITEMS.map(({ path, label, icon: Icon, end }) => (
+          {NAVIGATION_ITEMS.filter((item) => canAccess(item.permission)).map(({ path, label, icon: Icon, end }) => (
             <NavLink key={path} to={path} end={end} className="nav-link">
               <Icon size={18} strokeWidth={2} />
               <span>{label}</span>
@@ -65,7 +67,10 @@ export default function AppLayout({ user }) {
         </nav>
 
         <div className="sidebar__footer">
-          <div className="sidebar__user" title={user.email}>{user.email}</div>
+          <div className="sidebar__user" title={user.email}>
+            {profile.full_name || user.email}
+            <div className="text-small">{profile.is_admin ? 'Yönetici' : 'Kullanıcı'}</div>
+          </div>
           <button type="button" className="btn btn--ghost btn--sm" onClick={() => supabase.auth.signOut()}>
             <LogOut size={16} />
             Çıkış yap

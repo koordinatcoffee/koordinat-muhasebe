@@ -2,7 +2,7 @@
 -- Run in Supabase: SQL Editor → New query → paste this whole file → Run.
 -- Idempotent: safe to run multiple times; existing records are preserved.
 
-create extension if not exists pgcrypto;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---------------------------------------------------------------------------
 -- categories: two-level (group_name → name). Expense categories are also used
@@ -157,16 +157,241 @@ create trigger counterparties_set_updated_at before update on public.counterpart
   for each row execute function public.set_updated_at();
 
 -- ---------------------------------------------------------------------------
+-- app_users: who may use the panel and which pages they can open.
+--   is_admin      → every page + user management
+--   is_active     → false blocks sign-in (auth.users.banned_until) and all data access
+--   allowed_pages → page keys (see PAGE_PERMISSIONS in src/config/navigation.js)
+-- Users are created and changed only through the admin_* functions below.
+-- ---------------------------------------------------------------------------
+create table if not exists public.app_users (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  email text not null,
+  full_name text,
+  is_admin boolean not null default false,
+  is_active boolean not null default true,
+  allowed_pages text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists app_users_set_updated_at on public.app_users;
+create trigger app_users_set_updated_at before update on public.app_users
+  for each row execute function public.set_updated_at();
+
+create or replace function public.all_page_keys()
+returns text[] language sql immutable as $$
+  select array['dashboard', 'daily-register', 'payments', 'planned-payments', 'reports', 'categories'];
+$$;
+
+-- Permission helpers used by row level security (security definer: they read app_users
+-- regardless of its own policies)
+create or replace function public.is_active_user()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.app_users where user_id = auth.uid() and is_active);
+$$;
+
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.app_users where user_id = auth.uid() and is_active and is_admin);
+$$;
+
+create or replace function public.has_page_access(page text)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.app_users
+    where user_id = auth.uid() and is_active and (is_admin or page = any (allowed_pages))
+  );
+$$;
+
+-- Existing accounts keep full access: on the first run every existing user becomes an admin
+insert into public.app_users (user_id, email, is_admin, is_active, allowed_pages)
+select id, coalesce(email, ''), true, true, public.all_page_keys()
+from auth.users
+where not exists (select 1 from public.app_users);
+
+-- Accounts created outside the panel (e.g. Supabase dashboard) start inactive without pages,
+-- except the very first account, which becomes the admin
+create or replace function public.handle_new_auth_user()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  is_first boolean := not exists (select 1 from public.app_users where is_admin and is_active);
+begin
+  insert into public.app_users (user_id, email, is_admin, is_active, allowed_pages)
+  values (new.id, coalesce(new.email, ''), is_first, is_first,
+          case when is_first then public.all_page_keys() else '{}' end)
+  on conflict (user_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_auth_user();
+
+-- ------------------------------------------------------------ admin functions
+
+create or replace function public.assert_admin()
+returns void language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Bu işlem için yönetici yetkisi gerekir.';
+  end if;
+end;
+$$;
+
+create or replace function public.assert_valid_password(password text)
+returns void language plpgsql immutable as $$
+begin
+  if length(coalesce(password, '')) < 8 then
+    raise exception 'Şifre en az 8 karakter olmalı.';
+  end if;
+end;
+$$;
+
+create or replace function public.clean_page_keys(pages text[])
+returns text[] language sql immutable as $$
+  select coalesce(array_agg(page order by page), '{}')
+  from (select distinct unnest(pages) as page) requested
+  where page = any (public.all_page_keys());
+$$;
+
+create or replace function public.admin_list_users()
+returns table (
+  user_id uuid, email text, full_name text, is_admin boolean, is_active boolean,
+  allowed_pages text[], created_at timestamptz, last_sign_in_at timestamptz
+)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform public.assert_admin();
+  return query
+    select u.user_id, u.email, u.full_name, u.is_admin, u.is_active, u.allowed_pages, u.created_at,
+           a.last_sign_in_at
+    from public.app_users u
+    left join auth.users a on a.id = u.user_id
+    order by u.is_admin desc, u.is_active desc, lower(u.email);
+end;
+$$;
+
+create or replace function public.admin_create_user(
+  new_email text, new_password text, new_full_name text, new_is_admin boolean, new_allowed_pages text[]
+)
+returns uuid language plpgsql security definer set search_path = '' as $$
+declare
+  new_id uuid := gen_random_uuid();
+  normalized_email text := lower(trim(new_email));
+begin
+  perform public.assert_admin();
+  if normalized_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+    raise exception 'Geçerli bir e-posta adresi girin.';
+  end if;
+  perform public.assert_valid_password(new_password);
+  if exists (select 1 from auth.users where lower(email) = normalized_email) then
+    raise exception 'Bu e-posta ile kayıtlı bir kullanıcı zaten var.';
+  end if;
+
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, recovery_token, email_change_token_new, email_change,
+    email_change_token_current, reauthentication_token
+  ) values (
+    '00000000-0000-0000-0000-000000000000', new_id, 'authenticated', 'authenticated', normalized_email,
+    extensions.crypt(new_password, extensions.gen_salt('bf')), now(),
+    '{"provider": "email", "providers": ["email"]}'::jsonb,
+    jsonb_build_object('full_name', nullif(trim(new_full_name), '')), now(), now(),
+    '', '', '', '', '', ''
+  );
+
+  insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+  values (
+    gen_random_uuid(), new_id, new_id::text,
+    jsonb_build_object('sub', new_id::text, 'email', normalized_email, 'email_verified', true),
+    'email', now(), now(), now()
+  );
+
+  insert into public.app_users (user_id, email, full_name, is_admin, is_active, allowed_pages)
+  values (new_id, normalized_email, nullif(trim(new_full_name), ''), new_is_admin, true,
+          public.clean_page_keys(new_allowed_pages))
+  on conflict (user_id) do update
+    set full_name = excluded.full_name, is_admin = excluded.is_admin, is_active = true,
+        allowed_pages = excluded.allowed_pages;
+
+  return new_id;
+end;
+$$;
+
+create or replace function public.admin_update_user(
+  target_user_id uuid, new_full_name text, new_is_admin boolean, new_is_active boolean, new_allowed_pages text[]
+)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.assert_admin();
+  if target_user_id = auth.uid() and (not new_is_active or not new_is_admin) then
+    raise exception 'Kendi hesabınızı pasif yapamaz veya yönetici yetkinizi kaldıramazsınız.';
+  end if;
+
+  update public.app_users
+  set full_name = nullif(trim(new_full_name), ''),
+      is_admin = new_is_admin,
+      is_active = new_is_active,
+      allowed_pages = public.clean_page_keys(new_allowed_pages)
+  where user_id = target_user_id;
+  if not found then
+    raise exception 'Kullanıcı bulunamadı.';
+  end if;
+
+  -- Inactive accounts cannot sign in, and their open sessions are ended
+  update auth.users
+  set banned_until = case when new_is_active then null else now() + interval '100 years' end,
+      updated_at = now()
+  where id = target_user_id;
+  if not new_is_active then
+    delete from auth.sessions where user_id = target_user_id;
+  end if;
+end;
+$$;
+
+create or replace function public.admin_set_user_password(target_user_id uuid, new_password text)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.assert_admin();
+  perform public.assert_valid_password(new_password);
+  update auth.users
+  set encrypted_password = extensions.crypt(new_password, extensions.gen_salt('bf')), updated_at = now()
+  where id = target_user_id;
+  if not found then
+    raise exception 'Kullanıcı bulunamadı.';
+  end if;
+end;
+$$;
+
+-- Only signed-in users may call these; each function checks the caller's rights itself
+revoke execute on function
+  public.admin_list_users(), public.admin_create_user(text, text, text, boolean, text[]),
+  public.admin_update_user(uuid, text, boolean, boolean, text[]), public.admin_set_user_password(uuid, text),
+  public.handle_new_auth_user()
+from public, anon;
+grant execute on function
+  public.admin_list_users(), public.admin_create_user(text, text, text, boolean, text[]),
+  public.admin_update_user(uuid, text, boolean, boolean, text[]), public.admin_set_user_password(uuid, text)
+to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- pay_planned_payment: records a planned payment as a made payment in one step
--- (creates the "payment" transaction and links it).
+-- (creates the "payment" transaction and links it). Allowed with access to the
+-- planned payments page, without needing write access to made payments.
 -- ---------------------------------------------------------------------------
 create or replace function public.pay_planned_payment(planned_id uuid, paid_on date)
 returns public.transactions
-language plpgsql as $$
+language plpgsql security definer set search_path = '' as $$
 declare
   planned public.planned_payments;
   payment public.transactions;
 begin
+  if not public.has_page_access('planned-payments') then
+    raise exception 'Bu işlem için "Yapılacak Ödemeler" yetkisi gerekir.';
+  end if;
+
   select * into planned from public.planned_payments where id = planned_id for update;
   if not found then
     raise exception 'Yapılacak ödeme bulunamadı.';
@@ -186,34 +411,45 @@ begin
 end;
 $$;
 
+revoke execute on function public.pay_planned_payment(uuid, date) from public, anon;
+grant execute on function public.pay_planned_payment(uuid, date) to authenticated;
+
 -- ---------------------------------------------------------------------------
--- Row level security: only signed-in users can read and write
+-- Row level security
+--   read  → any active user (the dashboard and reports combine all tables)
+--   write → users with access to the page where that data is entered
 -- ---------------------------------------------------------------------------
-alter table public.categories enable row level security;
-alter table public.daily_registers enable row level security;
-alter table public.transactions enable row level security;
-alter table public.planned_payments enable row level security;
-alter table public.counterparties enable row level security;
+alter table public.app_users enable row level security;
+drop policy if exists "own_row_or_admin_read" on public.app_users;
+create policy "own_row_or_admin_read" on public.app_users
+  for select to authenticated using (user_id = auth.uid() or public.is_admin());
 
-drop policy if exists "authenticated_full_access" on public.categories;
-create policy "authenticated_full_access" on public.categories
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "authenticated_full_access" on public.daily_registers;
-create policy "authenticated_full_access" on public.daily_registers
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "authenticated_full_access" on public.transactions;
-create policy "authenticated_full_access" on public.transactions
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "authenticated_full_access" on public.planned_payments;
-create policy "authenticated_full_access" on public.planned_payments
-  for all to authenticated using (true) with check (true);
-
-drop policy if exists "authenticated_full_access" on public.counterparties;
-create policy "authenticated_full_access" on public.counterparties
-  for all to authenticated using (true) with check (true);
+do $$
+declare
+  rule record;
+begin
+  for rule in
+    select * from (values
+      ('categories', $c$public.has_page_access('categories')$c$),
+      ('daily_registers', $c$public.has_page_access('daily-register')$c$),
+      ('transactions', $c$public.has_page_access('payments')$c$),
+      ('planned_payments', $c$public.has_page_access('planned-payments')$c$),
+      ('counterparties', $c$public.has_page_access('payments') or public.has_page_access('planned-payments')$c$)
+    ) as rules (table_name, write_check)
+  loop
+    execute format('alter table public.%I enable row level security', rule.table_name);
+    execute format('drop policy if exists "authenticated_full_access" on public.%I', rule.table_name);
+    execute format('drop policy if exists "active_users_read" on public.%I', rule.table_name);
+    execute format(
+      'create policy "active_users_read" on public.%I for select to authenticated using (public.is_active_user())',
+      rule.table_name);
+    execute format('drop policy if exists "page_access_write" on public.%I', rule.table_name);
+    execute format(
+      'create policy "page_access_write" on public.%I for all to authenticated using (%s) with check (%s)',
+      rule.table_name, rule.write_check, rule.write_check);
+  end loop;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Legacy migration: copies data from the first (Turkish-named) schema

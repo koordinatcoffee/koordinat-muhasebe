@@ -3,20 +3,36 @@ import { Plus, X } from 'lucide-react';
 import { createCategory, deleteCategory, listCategories } from '../lib/api';
 import { groupCategories, groupsForType } from '../lib/categories';
 import { useAsync } from '../hooks/useAsync';
+import { useAccess } from '../hooks/useAccess';
 import { ErrorAlert, PageHeader } from '../components/ui';
+import PasswordChangeForm from '../components/settings/PasswordChangeForm';
+import UserManager from '../components/settings/UserManager';
 
 const UNIQUE_VIOLATION = '23505';
 
 export default function SettingsPage() {
+  const { profile, canAccess } = useAccess();
+
+  return (
+    <>
+      <PageHeader title="Ayarlar" description="Şifre, kullanıcılar ve kategoriler." />
+      <PasswordChangeForm />
+      {profile.is_admin && <UserManager />}
+      {canAccess('categories') && <CategorySettings />}
+    </>
+  );
+}
+
+function CategorySettings() {
   const { data, error, reload } = useAsync(listCategories, []);
   const categories = data || [];
 
   return (
     <>
-      <PageHeader
-        title="Ayarlar"
-        description="Gelir ve gider kategorileri ana grup → alt kalem şeklindedir. Gider kategorileri ödemelerde de kullanılır."
-      />
+      <h2 className="section-title">Kategoriler</h2>
+      <p className="text-muted">
+        Gelir ve gider kategorileri ana grup → alt kalem şeklindedir. Gider kategorileri ödemelerde de kullanılır.
+      </p>
       <ErrorAlert error={error} />
       <div className="layout-grid layout-grid--top">
         <CategoryManager type="income" title="Gelir kategorileri" categories={categories} onChange={reload} />

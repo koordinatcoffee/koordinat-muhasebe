@@ -3,6 +3,12 @@ import { supabase } from '../lib/supabaseClient';
 import { Alert } from '../components/ui';
 import fullLogo from '../assets/brand/logo-full.png';
 
+const LOGIN_ERRORS = {
+  'Invalid login credentials': 'E-posta veya şifre hatalı.',
+  invalid_credentials: 'E-posta veya şifre hatalı.',
+  user_banned: 'Hesabınız pasif durumda. Yöneticinize başvurun.',
+};
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +21,7 @@ export default function LoginPage() {
     setErrorMessage('');
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) {
-      setErrorMessage(error.message === 'Invalid login credentials' ? 'E-posta veya şifre hatalı.' : error.message);
+      setErrorMessage(LOGIN_ERRORS[error.code] || LOGIN_ERRORS[error.message] || error.message);
     }
     setIsSubmitting(false);
   }

@@ -11,7 +11,7 @@ React + Vite ile web'de geliştirilir, Supabase'de veri tutar ve Electron ile Wi
 | **Yapılan Ödemeler** | Kime, ne kadar, hangi yöntemle ödendi (tedarikçi, kira, maaş, vergi…). Firma/kişinin **IBAN** ve **telefonu**, **fatura no** ve **fatura tutarı**; her faturanın **kalan borcu** (kısmi ödeme). "Kime ne ödedik" ve "Açık faturalar" özetleri. |
 | **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek (IBAN, telefon, fatura bilgileriyle). Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; o ödeme silinirse tekrar bekleyene döner. |
 | **Raporlar** | Aylık / yıllık / tarih aralığı kâr-zarar, kâr marjı, gider dağılımı, kime ne ödendiği, ödeme yöntemine göre giriş-çıkış, aylık veya günlük döküm, tüm hareketler. **Yazdır / PDF** ve **Excel'e aktar**. |
-| **Ayarlar** | Gelir ve gider kategorileri (ana grup → alt kalem). |
+| **Ayarlar** | Şifre değiştirme (herkes), kullanıcı yönetimi (yönetici), gelir ve gider kategorileri (ana grup → alt kalem). |
 
 Özet, Günlük Kasa, Yapılan / Yapılacak Ödemeler ve Raporlar sayfalarında **Excel'e aktar** düğmesi biçimli bir `.xlsx` dosyası indirir (her bölüm ayrı sayfa, para ve tarih biçimleri, toplam satırları, A4 yazdırma ayarı).
 
@@ -37,6 +37,14 @@ Kâr Marjı    = Net / Toplam Gelir
 
 > Yapılacak ödemeler, **Ödendi** denene kadar kâr-zarara girmez.
 > Eski Gelir - Gider Defteri kayıtları (`income` / `expense`) raporlarda hesaba katılmaya devam eder.
+
+### Kullanıcılar ve yetkiler
+
+- **Yönetici** tüm sayfaları görür ve Ayarlar → Kullanıcılar'dan kullanıcı ekler (e-posta + şifre), şifresini sıfırlar, aktif / pasif yapar ve hangi sayfaları açabileceğini seçer.
+- **Kullanıcı** yalnızca işaretlenen sayfaları görür; kayıt girme / düzenleme / silme de veritabanında (RLS) aynı sayfa yetkisine bağlıdır. Okuma her aktif kullanıcıya açıktır (Özet ve Raporlar tüm tabloları birleştirir).
+- **Pasif** kullanıcı giriş yapamaz, açık oturumu kapatılır ve hiçbir veriye erişemez.
+- `schema.sql` ilk çalıştırıldığında mevcut tüm hesaplar yönetici olur. Supabase panelinden sonradan eklenen hesaplar pasif başlar (ilk hesap hariç); kullanıcıları uygulamadan ekleyin.
+- Kullanıcı oluşturma `admin_create_user` SQL fonksiyonuyla doğrudan `auth.users` tablosuna yazar (service role anahtarı uygulamaya konmaz).
 
 ## Kurulum
 
@@ -87,6 +95,7 @@ Arayüz masaüstü, tablet ve telefonda çalışır:
 
 | Tablo | Açıklama |
 |---|---|
+| `app_users` | Panel kullanıcıları: `user_id` (auth.users), `email`, `full_name`, `is_admin`, `is_active`, `allowed_pages` (sayfa anahtarları) |
 | `categories` | `name`, `type` (`income` / `expense`), `group_name`, `sort_order` |
 | `daily_registers` | Günlük kasa: `date` (tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
 | `transactions` | `date`, `type` (`income` / `expense` / `payment`), `category`, `counterparty`, `payment_method` (`cash` / `card` / `bank_transfer` / `other`), `amount`, `description`, `invoice_no`, `invoice_amount` |

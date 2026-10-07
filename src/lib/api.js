@@ -210,3 +210,53 @@ export async function createCategory({ name, type, groupName }) {
 export async function deleteCategory(id) {
   unwrap(await supabase.from('categories').delete().eq('id', id));
 }
+
+// ------------------------------------------------------------ Users and access
+
+/** The signed-in user's access row: { is_admin, is_active, allowed_pages, … } or null */
+export async function getMyProfile(userId) {
+  return unwrap(await supabase.from('app_users').select('*').eq('user_id', userId).maybeSingle());
+}
+
+/** Admin only: every panel user with their last sign-in time */
+export async function listAppUsers() {
+  return unwrap(await supabase.rpc('admin_list_users'));
+}
+
+export async function createAppUser({ email, password, fullName, isAdmin, allowedPages }) {
+  return unwrap(
+    await supabase.rpc('admin_create_user', {
+      new_email: email,
+      new_password: password,
+      new_full_name: fullName,
+      new_is_admin: isAdmin,
+      new_allowed_pages: allowedPages,
+    }),
+  );
+}
+
+export async function updateAppUser({ userId, fullName, isAdmin, isActive, allowedPages }) {
+  unwrap(
+    await supabase.rpc('admin_update_user', {
+      target_user_id: userId,
+      new_full_name: fullName,
+      new_is_admin: isAdmin,
+      new_is_active: isActive,
+      new_allowed_pages: allowedPages,
+    }),
+  );
+}
+
+export async function setAppUserPassword(userId, password) {
+  unwrap(await supabase.rpc('admin_set_user_password', { target_user_id: userId, new_password: password }));
+}
+
+/** Changes the signed-in user's password after checking the current one */
+export async function changeOwnPassword(email, currentPassword, newPassword) {
+  const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+  if (signInError) throw new Error('Mevcut şifre hatalı.');
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error?.code === 'same_password') throw new Error('Yeni şifre mevcut şifreyle aynı olamaz.');
+  if (error?.code === 'weak_password') throw new Error('Yeni şifre çok zayıf; daha uzun ve karışık bir şifre seçin.');
+  if (error) throw error;
+}
