@@ -260,3 +260,76 @@ export async function changeOwnPassword(email, currentPassword, newPassword) {
   if (error?.code === 'weak_password') throw new Error('Yeni şifre çok zayıf; daha uzun ve karışık bir şifre seçin.');
   if (error) throw error;
 }
+
+// ------------------------------------------------------------- Staff and advances
+
+export async function listEmployees() {
+  return unwrap(await supabase.from('employees').select('*').order('full_name'));
+}
+
+export async function listEmployeeSalaries() {
+  return unwrap(await supabase.from('employee_salaries').select('*').order('valid_from'));
+}
+
+/** Advances and salary payments up to endDate (earlier months are needed for the carried-over balance) */
+export const listEmployeeEntries = (endDate) =>
+  fetchAllPages(() =>
+    supabase
+      .from('employee_entries')
+      .select('*')
+      .lte('date', endDate)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id'),
+  );
+
+/**
+ * Saves an employee; salary (when given) is stored as their net salary from salaryValidFrom
+ * (first day of a month) onwards, replacing a salary already set for that month.
+ */
+export async function saveEmployee({ id, salary, salaryValidFrom, ...fields }) {
+  const row = {
+    full_name: fields.fullName.trim(),
+    position: fields.position?.trim() || null,
+    phone: fields.phone?.trim() || null,
+    iban: normalizeIban(fields.iban) || null,
+    start_date: fields.startDate,
+    end_date: fields.endDate || null,
+    note: fields.note?.trim() || null,
+  };
+  const query = id
+    ? supabase.from('employees').update(row).eq('id', id)
+    : supabase.from('employees').insert(row);
+  const saved = unwrap(await query.select().single());
+  if (salary !== null && salary !== undefined) {
+    unwrap(
+      await supabase
+        .from('employee_salaries')
+        .upsert({ employee_id: saved.id, valid_from: salaryValidFrom, amount: salary }, { onConflict: 'employee_id,valid_from' }),
+    );
+  }
+  return saved;
+}
+
+export async function deleteEmployee(id) {
+  unwrap(await supabase.from('employees').delete().eq('id', id));
+}
+
+export async function saveEmployeeEntry({ id, ...fields }) {
+  const row = {
+    employee_id: fields.employeeId,
+    date: fields.date,
+    kind: fields.kind,
+    amount: fields.amount,
+    payment_method: fields.paymentMethod,
+    note: fields.note?.trim() || null,
+  };
+  const query = id
+    ? supabase.from('employee_entries').update(row).eq('id', id)
+    : supabase.from('employee_entries').insert(row);
+  return unwrap(await query.select().single());
+}
+
+export async function deleteEmployeeEntry(id) {
+  unwrap(await supabase.from('employee_entries').delete().eq('id', id));
+}

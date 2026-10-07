@@ -10,6 +10,7 @@ React + Vite ile web'de geliştirilir, Supabase'de veri tutar ve Electron ile Wi
 | **Günlük Kasa** | Her gün için **nakit** + **kredi kartı** satış toplamı. Toplam otomatik hesaplanır. Bir güne tek kayıt girilir; aynı tarih seçilirse kayıt güncellenir. İsteğe bağlı olarak tutar ürün gruplarına (sıcak kahve, soğuk içecek, tatlı…) dağıtılabilir. |
 | **Yapılan Ödemeler** | Kime, ne kadar, hangi yöntemle ödendi (tedarikçi, kira, maaş, vergi…). Firma/kişinin **IBAN** ve **telefonu**, **fatura no** ve **fatura tutarı**; her faturanın **kalan borcu** (kısmi ödeme). "Kime ne ödedik" ve "Açık faturalar" özetleri. |
 | **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek (IBAN, telefon, fatura bilgileriyle). Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; o ödeme silinirse tekrar bekleyene döner. |
+| **Personel Avansları** | Personel listesi ve aylık net maaş (maaş geçmişiyle), verilen **avanslar** ve **maaş ödemeleri**. Her ay için devreden + hakediş − avans − ödeme hesabıyla **ay sonu kim alacaklı** (personel mi, biz mi). Avans ve maaş ödemeleri Yapılan Ödemeler'e (Avans / Net Maaşlar kategorisi) otomatik eklenir; oradan değil bu sayfadan düzenlenir. |
 | **Raporlar** | Aylık / yıllık / tarih aralığı kâr-zarar, kâr marjı, gider dağılımı, kime ne ödendiği, ödeme yöntemine göre giriş-çıkış, aylık veya günlük döküm, tüm hareketler. **Yazdır / PDF** ve **Excel'e aktar**. |
 | **Ayarlar** | Şifre değiştirme (herkes), kullanıcı yönetimi (yönetici), gelir ve gider kategorileri (ana grup → alt kalem). |
 
@@ -95,6 +96,7 @@ Arayüz masaüstü, tablet ve telefonda çalışır:
 
 | Tablo | Açıklama |
 |---|---|
+| `employees` / `employee_salaries` / `employee_entries` | Personel; maaş geçmişi (`valid_from` ayından itibaren); avans (`advance`) ve maaş ödemesi (`salary_payment`) kayıtları. Her kayıt `transactions.employee_entry_id` ile bir ödeme kaydına yansıtılır. |
 | `app_users` | Panel kullanıcıları: `user_id` (auth.users), `email`, `full_name`, `is_admin`, `is_active`, `allowed_pages` (sayfa anahtarları) |
 | `categories` | `name`, `type` (`income` / `expense`), `group_name`, `sort_order` |
 | `daily_registers` | Günlük kasa: `date` (tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
@@ -126,13 +128,14 @@ src/
     format.js                     Currency, date, amount parsing, labels
     excel.js                      Formatted .xlsx export (exceljs, loaded on demand)
     invoices.js                   Invoice balance lookup, remaining debt
+    payroll.js                    Staff salary proration and month-end balances
   components/
     layout/AppLayout.jsx          Sidebar, mobile top bar and drawer
     payments/PaymentFields.jsx    Counterparty (IBAN, phone) and invoice form fields
     reports/GroupedAmountTable.jsx
     settings/                     PasswordChangeForm, UserManager
     ui/                           PageHeader, StatCard, MoneyInput, MonthPicker, CategorySelect, Alert, EmptyState
-  pages/                          Login, Dashboard, DailyRegister, Transactions (payments made), PlannedPayments, Reports, Settings
+  pages/                          Login, Dashboard, DailyRegister, Transactions (payments made), PlannedPayments, Employees, Reports, Settings
   assets/brand/                   logo-compact.png, logo-full.png
   styles/global.css               Design tokens, layout, responsive and print styles
 ```

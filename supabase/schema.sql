@@ -130,6 +130,60 @@ create table if not exists public.counterparties (
 );
 
 -- ---------------------------------------------------------------------------
+-- Staff, salaries and advances
+--   employees         → staff; salary is earned from start_date until end_date
+--   employee_salaries → monthly net salary history; a row applies from valid_from
+--                       (first day of a month) until the next row
+--   employee_entries  → money given to staff: advance or salary payment. Each entry
+--                       is mirrored as a "payment" transaction (see the sync trigger),
+--                       so it shows up in made payments and reports.
+-- Month-end balance = carried over + salary earned − advances − salary payments
+--   > 0 → the employee is owed money, < 0 → the employee owes the business
+-- ---------------------------------------------------------------------------
+create table if not exists public.employees (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null unique,
+  position text,
+  phone text,
+  iban text,
+  start_date date not null default current_date,
+  end_date date,
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (end_date is null or end_date >= start_date)
+);
+
+create table if not exists public.employee_salaries (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.employees (id) on delete cascade,
+  valid_from date not null check (extract(day from valid_from) = 1),
+  amount numeric(14, 2) not null check (amount >= 0),
+  created_at timestamptz not null default now(),
+  unique (employee_id, valid_from)
+);
+
+create table if not exists public.employee_entries (
+  id uuid primary key default gen_random_uuid(),
+  -- restrict: an employee with entries cannot be deleted (set end_date instead)
+  employee_id uuid not null references public.employees (id) on delete restrict,
+  date date not null default current_date,
+  kind text not null check (kind in ('advance', 'salary_payment')),
+  amount numeric(14, 2) not null check (amount > 0),
+  payment_method text not null default 'cash'
+    check (payment_method in ('cash', 'card', 'bank_transfer', 'other')),
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists employee_entries_employee_date_idx on public.employee_entries (employee_id, date);
+
+-- The payment transaction mirroring an employee entry (deleted together with it)
+alter table public.transactions
+  add column if not exists employee_entry_id uuid unique references public.employee_entries (id) on delete cascade;
+
+-- ---------------------------------------------------------------------------
 -- updated_at trigger
 -- ---------------------------------------------------------------------------
 create or replace function public.set_updated_at()
@@ -156,6 +210,14 @@ drop trigger if exists counterparties_set_updated_at on public.counterparties;
 create trigger counterparties_set_updated_at before update on public.counterparties
   for each row execute function public.set_updated_at();
 
+drop trigger if exists employees_set_updated_at on public.employees;
+create trigger employees_set_updated_at before update on public.employees
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists employee_entries_set_updated_at on public.employee_entries;
+create trigger employee_entries_set_updated_at before update on public.employee_entries
+  for each row execute function public.set_updated_at();
+
 -- ---------------------------------------------------------------------------
 -- app_users: who may use the panel and which pages they can open.
 --   is_admin      → every page + user management
@@ -180,7 +242,7 @@ create trigger app_users_set_updated_at before update on public.app_users
 
 create or replace function public.all_page_keys()
 returns text[] language sql immutable as $$
-  select array['dashboard', 'daily-register', 'payments', 'planned-payments', 'reports', 'categories'];
+  select array['dashboard', 'daily-register', 'payments', 'planned-payments', 'employees', 'reports', 'categories'];
 $$;
 
 -- Permission helpers used by row level security (security definer: they read app_users
@@ -415,8 +477,76 @@ revoke execute on function public.pay_planned_payment(uuid, date) from public, a
 grant execute on function public.pay_planned_payment(uuid, date) to authenticated;
 
 -- ---------------------------------------------------------------------------
+-- Employee entries → payment transactions (category "Avans" / "Net Maaşlar").
+-- Security definer: staff page users need no write access to made payments.
+-- ---------------------------------------------------------------------------
+create or replace function public.sync_employee_entry_transaction()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  employee_name text;
+  category_name text := case new.kind when 'advance' then 'Avans' else 'Net Maaşlar' end;
+  default_description text := case new.kind when 'advance' then 'Personel avansı' else 'Maaş ödemesi' end;
+begin
+  select full_name into employee_name from public.employees where id = new.employee_id;
+
+  if tg_op = 'INSERT' then
+    insert into public.transactions
+      (date, type, category, counterparty, payment_method, amount, description, employee_entry_id)
+    values (new.date, 'payment', category_name, employee_name, new.payment_method, new.amount,
+            coalesce(nullif(trim(new.note), ''), default_description), new.id);
+  else
+    update public.transactions
+    set date = new.date, category = category_name, counterparty = employee_name,
+        payment_method = new.payment_method, amount = new.amount,
+        description = coalesce(nullif(trim(new.note), ''), default_description)
+    where employee_entry_id = new.id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists employee_entries_sync_transaction on public.employee_entries;
+create trigger employee_entries_sync_transaction after insert or update on public.employee_entries
+  for each row execute function public.sync_employee_entry_transaction();
+
+-- Renaming an employee renames the counterparty of their mirrored payments
+create or replace function public.sync_employee_name()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  update public.transactions t
+  set counterparty = new.full_name
+  from public.employee_entries e
+  where e.employee_id = new.id and t.employee_entry_id = e.id;
+  return new;
+end;
+$$;
+
+drop trigger if exists employees_sync_name on public.employees;
+create trigger employees_sync_name after update of full_name on public.employees
+  for each row execute function public.sync_employee_name();
+
+-- Mirrored payments are changed only through their employee entry
+-- (depth 1 = a direct statement; the sync trigger and the cascade delete run deeper)
+create or replace function public.protect_employee_transactions()
+returns trigger language plpgsql as $$
+begin
+  if old.employee_entry_id is not null and pg_trigger_depth() = 1 then
+    raise exception 'Bu ödeme "Personel Avansları" sayfasından yönetilir.';
+  end if;
+  return case tg_op when 'DELETE' then old else new end;
+end;
+$$;
+
+drop trigger if exists transactions_protect_employee_entries on public.transactions;
+create trigger transactions_protect_employee_entries before update or delete on public.transactions
+  for each row execute function public.protect_employee_transactions();
+
+revoke execute on function public.sync_employee_entry_transaction(), public.sync_employee_name() from public, anon;
+
+-- ---------------------------------------------------------------------------
 -- Row level security
---   read  → any active user (the dashboard and reports combine all tables)
+--   read  → any active user (the dashboard and reports combine all tables);
+--           staff data only with access to the staff page
 --   write → users with access to the page where that data is entered
 -- ---------------------------------------------------------------------------
 alter table public.app_users enable row level security;
@@ -430,19 +560,24 @@ declare
 begin
   for rule in
     select * from (values
-      ('categories', $c$public.has_page_access('categories')$c$),
-      ('daily_registers', $c$public.has_page_access('daily-register')$c$),
-      ('transactions', $c$public.has_page_access('payments')$c$),
-      ('planned_payments', $c$public.has_page_access('planned-payments')$c$),
-      ('counterparties', $c$public.has_page_access('payments') or public.has_page_access('planned-payments')$c$)
-    ) as rules (table_name, write_check)
+      ('categories', 'public.is_active_user()', $c$public.has_page_access('categories')$c$),
+      ('daily_registers', 'public.is_active_user()', $c$public.has_page_access('daily-register')$c$),
+      ('transactions', 'public.is_active_user()', $c$public.has_page_access('payments')$c$),
+      ('planned_payments', 'public.is_active_user()', $c$public.has_page_access('planned-payments')$c$),
+      ('counterparties', 'public.is_active_user()',
+       $c$public.has_page_access('payments') or public.has_page_access('planned-payments')$c$),
+      ('employees', $c$public.has_page_access('employees')$c$, $c$public.has_page_access('employees')$c$),
+      ('employee_salaries', $c$public.has_page_access('employees')$c$, $c$public.has_page_access('employees')$c$),
+      ('employee_entries', $c$public.has_page_access('employees')$c$, $c$public.has_page_access('employees')$c$)
+    ) as rules (table_name, read_check, write_check)
   loop
     execute format('alter table public.%I enable row level security', rule.table_name);
     execute format('drop policy if exists "authenticated_full_access" on public.%I', rule.table_name);
     execute format('drop policy if exists "active_users_read" on public.%I', rule.table_name);
+    execute format('drop policy if exists "read_access" on public.%I', rule.table_name);
     execute format(
-      'create policy "active_users_read" on public.%I for select to authenticated using (public.is_active_user())',
-      rule.table_name);
+      'create policy "read_access" on public.%I for select to authenticated using (%s)',
+      rule.table_name, rule.read_check);
     execute format('drop policy if exists "page_access_write" on public.%I', rule.table_name);
     execute format(
       'create policy "page_access_write" on public.%I for all to authenticated using (%s) with check (%s)',

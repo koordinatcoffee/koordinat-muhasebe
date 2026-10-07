@@ -1,10 +1,11 @@
-import { BarChart3, CalendarClock, LayoutDashboard, Send, Settings, Wallet } from 'lucide-react';
+import { BarChart3, CalendarClock, HandCoins, LayoutDashboard, Send, Settings, Wallet } from 'lucide-react';
 
 export const ROUTES = {
   dashboard: '/',
   dailyRegister: '/daily-register',
   payments: '/payments',
   plannedPayments: '/planned-payments',
+  employees: '/employees',
   reports: '/reports',
   settings: '/settings',
 };
@@ -18,6 +19,7 @@ export const PAGE_PERMISSIONS = [
   { key: 'daily-register', label: 'Günlük Kasa' },
   { key: 'payments', label: 'Yapılan Ödemeler' },
   { key: 'planned-payments', label: 'Yapılacak Ödemeler' },
+  { key: 'employees', label: 'Personel Avansları' },
   { key: 'reports', label: 'Raporlar / Kâr-Zarar' },
   { key: 'categories', label: 'Kategoriler (Ayarlar)' },
 ];
@@ -28,6 +30,7 @@ export const NAVIGATION_ITEMS = [
   { path: ROUTES.dailyRegister, label: 'Günlük Kasa', icon: Wallet, permission: 'daily-register' },
   { path: ROUTES.payments, label: 'Yapılan Ödemeler', icon: Send, permission: 'payments' },
   { path: ROUTES.plannedPayments, label: 'Yapılacak Ödemeler', icon: CalendarClock, permission: 'planned-payments' },
+  { path: ROUTES.employees, label: 'Personel Avansları', icon: HandCoins, permission: 'employees' },
   { path: ROUTES.reports, label: 'Raporlar / Kâr-Zarar', icon: BarChart3, permission: 'reports' },
   { path: ROUTES.settings, label: 'Ayarlar', icon: Settings, permission: null },
 ];

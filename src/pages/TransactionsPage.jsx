@@ -400,8 +400,15 @@ export default function TransactionsPage() {
                           {remaining === null ? '—' : formatCurrency(remaining)}
                         </td>
                         <td className="row-actions">
-                          <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(transaction)}>Düzenle</button>
-                          <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(transaction)}>Sil</button>
+                          {transaction.employee_entry_id ? (
+                            // Mirrored staff advance / salary payment: changed on the staff page
+                            <span className="badge badge--info" title="Personel Avansları sayfasından düzenlenir">Personel</span>
+                          ) : (
+                            <>
+                              <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(transaction)}>Düzenle</button>
+                              <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(transaction)}>Sil</button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     );

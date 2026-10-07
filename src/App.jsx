@@ -14,6 +14,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const DailyRegisterPage = lazy(() => import('./pages/DailyRegisterPage'));
 const TransactionsPage = lazy(() => import('./pages/TransactionsPage'));
 const PlannedPaymentsPage = lazy(() => import('./pages/PlannedPaymentsPage'));
+const EmployeesPage = lazy(() => import('./pages/EmployeesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
@@ -83,6 +84,7 @@ function SignedInApp({ user }) {
           <Route path={ROUTES.dailyRegister} element={<RequirePage page="daily-register"><DailyRegisterPage /></RequirePage>} />
           <Route path={ROUTES.payments} element={<RequirePage page="payments"><TransactionsPage /></RequirePage>} />
           <Route path={ROUTES.plannedPayments} element={<RequirePage page="planned-payments"><PlannedPaymentsPage /></RequirePage>} />
+          <Route path={ROUTES.employees} element={<RequirePage page="employees"><EmployeesPage /></RequirePage>} />
           <Route path={ROUTES.reports} element={<RequirePage page="reports"><ReportsPage /></RequirePage>} />
           <Route path={ROUTES.settings} element={<SettingsPage />} />
           <Route path="*" element={<Navigate to={ROUTES.dashboard} replace />} />

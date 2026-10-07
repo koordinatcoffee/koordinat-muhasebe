@@ -465,6 +465,8 @@ input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var
 .badge--expense { background: var(--color-negative-soft); color: var(--color-negative); }
 .badge--payment { background: #fdf0de; color: #9a5b06; }
 .badge--info { background: var(--color-info-soft); color: var(--color-info); }
+.balance-text { white-space: nowrap; }
+.balance-text .badge { margin-left: 4px; }
 .badge--tiny { margin-left: 8px; padding: 1px 6px; font-size: 10.5px; }
 
 .alert { margin: 12px 0 0; padding: 10px 14px; border-radius: var(--radius-sm); font-weight: 500; }
