@@ -2,9 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
-import './styles.css';
+import './styles/global.css';
 
-// HashRouter: hem tarayıcıda hem Electron'da (file://) sorunsuz çalışır
+// HashRouter works both in the browser and in Electron (file:// protocol)
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <HashRouter>

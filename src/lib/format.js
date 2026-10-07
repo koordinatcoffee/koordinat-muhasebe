@@ -1,82 +1,76 @@
-const tlFormatter = new Intl.NumberFormat('tr-TR', {
+const LOCALE = 'tr-TR';
+
+const currencyFormatter = new Intl.NumberFormat(LOCALE, {
   style: 'currency',
   currency: 'TRY',
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
-const numberFormatter = new Intl.NumberFormat('tr-TR', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+export const formatCurrency = (value) => currencyFormatter.format(Number(value) || 0);
 
-export const formatTL = (n) => tlFormatter.format(Number(n) || 0);
-export const formatNumber = (n) => numberFormatter.format(Number(n) || 0);
-export const formatPercent = (n) =>
-  Number.isFinite(n) ? `%${n.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}` : '—';
+export const formatPercent = (value) =>
+  Number.isFinite(value) ? `%${value.toLocaleString(LOCALE, { maximumFractionDigits: 1 })}` : '—';
 
 /**
- * Türkçe yazılmış tutarı sayıya çevirir.
+ * Parses an amount typed in Turkish notation.
  * "10.000" → 10000, "10.000,50" → 10000.5, "1500,5" → 1500.5, "1500.5" → 1500.5
- * Geçersiz girişte NaN, boş girişte 0 döner.
+ * Returns 0 for empty input and NaN for invalid input.
  */
-export function parseMoney(input) {
+export function parseAmount(input) {
   if (typeof input === 'number') return input;
-  let s = String(input ?? '').trim().replace(/\s|₺|TL/gi, '');
-  if (!s) return 0;
-  if (s.includes(',')) {
-    s = s.replace(/\./g, '').replace(',', '.');
-  } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
-    s = s.replace(/\./g, '');
+  let normalized = String(input ?? '').trim().replace(/\s|₺|TL/gi, '');
+  if (!normalized) return 0;
+  if (normalized.includes(',')) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(normalized)) {
+    normalized = normalized.replace(/\./g, '');
   }
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : NaN;
 }
 
-/** Sayıyı form alanında düzenlenebilir hale getirir: 10000.5 → "10000,50" */
-export const toInputMoney = (n) =>
-  n === null || n === undefined || n === '' ? '' : String(Number(n).toFixed(2)).replace('.', ',');
+/** Converts a stored number into an editable input value: 10000.5 → "10000,50" */
+export const toAmountInput = (value) =>
+  value === null || value === undefined || value === '' ? '' : Number(value).toFixed(2).replace('.', ',');
+
+export const roundAmount = (value) => Math.round(value * 100) / 100;
 
 const pad = (n) => String(n).padStart(2, '0');
 
-export function toISODate(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export const toISODate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+export const todayISO = () => toISODate(new Date());
+
+/** "2026-10-01" → "01.10.2026" */
+export function formatDate(isoDate) {
+  if (!isoDate) return '';
+  const [year, month, day] = isoDate.slice(0, 10).split('-');
+  return `${day}.${month}.${year}`;
 }
 
-export const today = () => toISODate(new Date());
-
-export function formatDate(iso) {
-  if (!iso) return '';
-  const [y, m, d] = iso.slice(0, 10).split('-');
-  return `${d}.${m}.${y}`;
-}
-
-export const AYLAR = [
+export const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
 ];
 
-/** month: 1-12 */
-export function monthRange(year, month) {
-  return {
-    start: `${year}-${pad(month)}-01`,
-    end: toISODate(new Date(year, month, 0)),
-  };
-}
+/** month is 1-based */
+export const monthRange = (year, month) => ({
+  start: `${year}-${pad(month)}-01`,
+  end: toISODate(new Date(year, month, 0)),
+});
 
-export function yearRange(year) {
-  return { start: `${year}-01-01`, end: `${year}-12-31` };
-}
+export const yearRange = (year) => ({ start: `${year}-01-01`, end: `${year}-12-31` });
 
-export const ODEME_YONTEMLERI = {
-  nakit: 'Nakit',
-  kredi_karti: 'Kredi Kartı',
-  havale: 'Havale / EFT',
-  diger: 'Diğer',
+export const PAYMENT_METHOD_LABELS = {
+  cash: 'Nakit',
+  card: 'Kredi Kartı',
+  bank_transfer: 'Havale / EFT',
+  other: 'Diğer',
 };
 
-export const TUR_ETIKET = {
-  gelir: 'Gelir',
-  gider: 'Gider',
-  odeme: 'Ödeme',
+export const TRANSACTION_TYPE_LABELS = {
+  income: 'Gelir',
+  expense: 'Gider',
+  payment: 'Ödeme',
 };

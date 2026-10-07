@@ -1,145 +1,184 @@
-import { AYLAR } from './format.js';
-import { DIGER_GRUP, grupMap, KASA_DAGITILMAMIS } from './kategoriler.js';
+import { MONTH_NAMES, roundAmount } from './format.js';
+import {
+  buildGroupLookup, FALLBACK_GROUP, REGISTER_SALES_GROUP, UNALLOCATED_REGISTER_SALES,
+} from './categories.js';
 
-const num = (v) => Number(v) || 0;
-const round = (v) => Math.round(v * 100) / 100;
+const toNumber = (value) => Number(value) || 0;
+const UNCATEGORIZED = 'Kategorisiz';
+const UNSPECIFIED = 'Belirtilmemiş';
 
-function addTo(map, key, amount) {
+function increment(map, key, amount) {
   map.set(key, (map.get(key) || 0) + amount);
 }
 
-const sortedEntries = (map) =>
-  [...map.entries()].map(([ad, tutar]) => ({ ad, tutar: round(tutar) })).sort((a, b) => b.tutar - a.tutar);
+const toSortedRows = (map) =>
+  [...map.entries()]
+    .map(([name, amount]) => ({ name, amount: roundAmount(amount) }))
+    .sort((a, b) => b.amount - a.amount);
 
-/** Alt kalemleri ana gruplarda toplar: [{ ad, tutar, kalemler: [{ ad, tutar }] }] */
-function groupEntries(entries, grupOf) {
+/** Rolls category rows up into groups: [{ name, amount, items: [{ name, amount }] }] */
+function rollUpByGroup(rows, groupOf) {
   const groups = new Map();
-  for (const e of entries) {
-    const g = grupOf(e.ad);
-    if (!groups.has(g)) groups.set(g, { ad: g, tutar: 0, kalemler: [] });
-    const grp = groups.get(g);
-    grp.tutar += e.tutar;
-    grp.kalemler.push(e);
+  for (const row of rows) {
+    const groupName = groupOf(row.name);
+    if (!groups.has(groupName)) groups.set(groupName, { name: groupName, amount: 0, items: [] });
+    const group = groups.get(groupName);
+    group.amount += row.amount;
+    group.items.push(row);
   }
-  return [...groups.values()].map((g) => ({ ...g, tutar: round(g.tutar) })).sort((a, b) => b.tutar - a.tutar);
+  return [...groups.values()]
+    .map((group) => ({ ...group, amount: roundAmount(group.amount) }))
+    .sort((a, b) => b.amount - a.amount);
 }
 
 /**
- * Kasa kayıtları ve hareketlerden dönem özeti çıkarır.
- *   Toplam Gelir = Kasa (nakit + kredi kartı) + diğer gelirler
- *   Toplam Çıkış = Giderler + Yapılan ödemeler
- *   Net          = Toplam Gelir - Toplam Çıkış
- * Kasanın ürün grubu dağılımı (dagilim) gelir kategorilerine eklenir;
- * dağıtılmayan kısım "Kasa Satışı (dağıtılmamış)" olarak görünür.
+ * Builds a period summary from daily registers and transactions.
+ *   Total income  = register (cash + card) + other income
+ *   Total outflow = expenses + payments
+ *   Net           = total income − total outflow
+ * A register's sales_breakdown is added to income categories; the unallocated
+ * remainder is reported as UNALLOCATED_REGISTER_SALES.
  */
-export function summarize(kasa = [], hareketler = [], kategoriler = []) {
-  let kasaNakit = 0;
-  let kasaKart = 0;
-  let digerGelir = 0;
-  let gider = 0;
-  let odeme = 0;
+export function summarize(registers = [], transactions = [], categories = []) {
+  let registerCash = 0;
+  let registerCard = 0;
+  let otherIncome = 0;
+  let expenses = 0;
+  let payments = 0;
 
-  const gelirKategori = new Map();
-  const giderKategori = new Map();
-  const odemeCari = new Map();
-  const odemeCariAdet = new Map();
-  const yontem = {
-    nakit: { giris: 0, cikis: 0 },
-    kredi_karti: { giris: 0, cikis: 0 },
-    havale: { giris: 0, cikis: 0 },
-    diger: { giris: 0, cikis: 0 },
+  const incomeByCategory = new Map();
+  const expenseByCategory = new Map();
+  const paymentTotals = new Map();
+  const paymentCounts = new Map();
+  const byPaymentMethod = {
+    cash: { inflow: 0, outflow: 0 },
+    card: { inflow: 0, outflow: 0 },
+    bank_transfer: { inflow: 0, outflow: 0 },
+    other: { inflow: 0, outflow: 0 },
   };
 
-  for (const k of kasa) {
-    kasaNakit += num(k.nakit);
-    kasaKart += num(k.kredi_karti);
-    let dagitilan = 0;
-    for (const [kat, tutar] of Object.entries(k.dagilim || {})) {
-      if (num(tutar) <= 0) continue;
-      addTo(gelirKategori, kat, num(tutar));
-      dagitilan += num(tutar);
-    }
-    const kalan = num(k.nakit) + num(k.kredi_karti) - dagitilan;
-    if (kalan > 0.004) addTo(gelirKategori, KASA_DAGITILMAMIS, kalan);
-  }
-  yontem.nakit.giris += kasaNakit;
-  yontem.kredi_karti.giris += kasaKart;
+  for (const register of registers) {
+    const cash = toNumber(register.cash);
+    const card = toNumber(register.card);
+    registerCash += cash;
+    registerCard += card;
 
-  for (const h of hareketler) {
-    const t = num(h.tutar);
-    const y = yontem[h.odeme_yontemi] || yontem.diger;
-    if (h.tur === 'gelir') {
-      digerGelir += t;
-      y.giris += t;
-      addTo(gelirKategori, h.kategori || 'Kategorisiz', t);
+    let allocated = 0;
+    for (const [category, value] of Object.entries(register.sales_breakdown || {})) {
+      const amount = toNumber(value);
+      if (amount <= 0) continue;
+      increment(incomeByCategory, category, amount);
+      allocated += amount;
+    }
+    const unallocated = cash + card - allocated;
+    if (unallocated > 0.004) increment(incomeByCategory, UNALLOCATED_REGISTER_SALES, unallocated);
+  }
+  byPaymentMethod.cash.inflow += registerCash;
+  byPaymentMethod.card.inflow += registerCard;
+
+  for (const transaction of transactions) {
+    const amount = toNumber(transaction.amount);
+    const method = byPaymentMethod[transaction.payment_method] || byPaymentMethod.other;
+    const category = transaction.category || UNCATEGORIZED;
+
+    if (transaction.type === 'income') {
+      otherIncome += amount;
+      method.inflow += amount;
+      increment(incomeByCategory, category, amount);
+      continue;
+    }
+
+    if (transaction.type === 'expense') {
+      expenses += amount;
     } else {
-      if (h.tur === 'gider') gider += t;
-      else {
-        odeme += t;
-        addTo(odemeCari, h.cari || 'Belirtilmemiş', t);
-        addTo(odemeCariAdet, h.cari || 'Belirtilmemiş', 1);
-      }
-      y.cikis += t;
-      addTo(giderKategori, h.kategori || 'Kategorisiz', t);
+      payments += amount;
+      const counterparty = transaction.counterparty || UNSPECIFIED;
+      increment(paymentTotals, counterparty, amount);
+      increment(paymentCounts, counterparty, 1);
     }
+    method.outflow += amount;
+    increment(expenseByCategory, category, amount);
   }
 
-  const kasaToplam = kasaNakit + kasaKart;
-  const toplamGelir = kasaToplam + digerGelir;
-  const toplamCikis = gider + odeme;
-  const net = toplamGelir - toplamCikis;
+  const registerTotal = registerCash + registerCard;
+  const totalIncome = registerTotal + otherIncome;
+  const totalOutflow = expenses + payments;
+  const net = totalIncome - totalOutflow;
 
-  const gruplar = grupMap(kategoriler);
-  const gelirGrupOf = (ad) =>
-    ad === KASA_DAGITILMAMIS ? 'Kafe Satışları' : gruplar.gelir.get(ad) || DIGER_GRUP.gelir;
-  const giderGrupOf = (ad) => gruplar.gider.get(ad) || DIGER_GRUP.gider;
-  const gelirKalemleri = sortedEntries(gelirKategori);
-  const giderKalemleri = sortedEntries(giderKategori);
+  const groupLookup = buildGroupLookup(categories);
+  const incomeGroupOf = (name) =>
+    name === UNALLOCATED_REGISTER_SALES
+      ? REGISTER_SALES_GROUP
+      : groupLookup.income.get(name) || FALLBACK_GROUP.income;
+  const expenseGroupOf = (name) => groupLookup.expense.get(name) || FALLBACK_GROUP.expense;
+
+  const incomeRows = toSortedRows(incomeByCategory);
+  const expenseRows = toSortedRows(expenseByCategory);
 
   return {
-    kasaNakit: round(kasaNakit),
-    kasaKart: round(kasaKart),
-    kasaToplam: round(kasaToplam),
-    digerGelir: round(digerGelir),
-    toplamGelir: round(toplamGelir),
-    gider: round(gider),
-    odeme: round(odeme),
-    toplamCikis: round(toplamCikis),
-    net: round(net),
-    karMarji: toplamGelir > 0 ? (net / toplamGelir) * 100 : NaN,
-    giderOrani: toplamGelir > 0 ? (toplamCikis / toplamGelir) * 100 : NaN,
-    gelirKategori: gelirKalemleri,
-    giderKategori: giderKalemleri,
-    gelirGrup: groupEntries(gelirKalemleri, gelirGrupOf),
-    giderGrup: groupEntries(giderKalemleri, giderGrupOf),
-    odemeCari: sortedEntries(odemeCari).map((r) => ({ ...r, adet: odemeCariAdet.get(r.ad) })),
-    yontem,
+    registerCash: roundAmount(registerCash),
+    registerCard: roundAmount(registerCard),
+    registerTotal: roundAmount(registerTotal),
+    otherIncome: roundAmount(otherIncome),
+    totalIncome: roundAmount(totalIncome),
+    expenses: roundAmount(expenses),
+    payments: roundAmount(payments),
+    totalOutflow: roundAmount(totalOutflow),
+    net: roundAmount(net),
+    profitMargin: totalIncome > 0 ? (net / totalIncome) * 100 : NaN,
+    outflowRatio: totalIncome > 0 ? (totalOutflow / totalIncome) * 100 : NaN,
+    incomeByCategory: incomeRows,
+    expenseByCategory: expenseRows,
+    incomeByGroup: rollUpByGroup(incomeRows, incomeGroupOf),
+    expenseByGroup: rollUpByGroup(expenseRows, expenseGroupOf),
+    paymentsByCounterparty: toSortedRows(paymentTotals).map((row) => ({
+      ...row,
+      count: paymentCounts.get(row.name),
+    })),
+    byPaymentMethod,
   };
 }
 
-/** Kayıtları gruplayıp her grup için özet çıkarır (aylık ya da günlük döküm). */
-function breakdown(kasa, hareketler, keyOf, keys, labelOf) {
-  const groups = new Map(keys.map((k) => [k, { kasa: [], hareketler: [] }]));
-  for (const k of kasa) groups.get(keyOf(k.tarih))?.kasa.push(k);
-  for (const h of hareketler) groups.get(keyOf(h.tarih))?.hareketler.push(h);
+/** Buckets records by key and summarizes each bucket (monthly or daily breakdown). */
+function breakdown(registers, transactions, { keys, keyOf, labelOf }) {
+  const buckets = new Map(keys.map((key) => [key, { registers: [], transactions: [] }]));
+  for (const register of registers) buckets.get(keyOf(register.date))?.registers.push(register);
+  for (const transaction of transactions) buckets.get(keyOf(transaction.date))?.transactions.push(transaction);
+
   return keys.map((key) => {
-    const g = groups.get(key);
-    return { key, label: labelOf(key), bos: !g.kasa.length && !g.hareketler.length, ...summarize(g.kasa, g.hareketler) };
+    const bucket = buckets.get(key);
+    return {
+      key,
+      label: labelOf(key),
+      isEmpty: !bucket.registers.length && !bucket.transactions.length,
+      ...summarize(bucket.registers, bucket.transactions),
+    };
   });
 }
 
-export function monthlyBreakdown(year, kasa, hareketler) {
-  const keys = AYLAR.map((_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
-  return breakdown(kasa, hareketler, (t) => t.slice(0, 7), keys, (k) => AYLAR[Number(k.slice(5, 7)) - 1]);
+export function monthlyBreakdown(year, registers, transactions) {
+  return breakdown(registers, transactions, {
+    keys: MONTH_NAMES.map((_, index) => `${year}-${String(index + 1).padStart(2, '0')}`),
+    keyOf: (date) => date.slice(0, 7),
+    labelOf: (key) => MONTH_NAMES[Number(key.slice(5, 7)) - 1],
+  });
 }
 
-export function dailyBreakdown(start, end, kasa, hareketler) {
+const MAX_DAILY_BUCKETS = 400;
+
+export function dailyBreakdown(startDate, endDate, registers, transactions) {
   const keys = [];
-  const d = new Date(`${start}T00:00:00`);
-  const last = new Date(`${end}T00:00:00`);
-  while (d <= last && keys.length < 400) {
-    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-    d.setDate(d.getDate() + 1);
+  const cursor = new Date(`${startDate}T00:00:00`);
+  const last = new Date(`${endDate}T00:00:00`);
+  while (cursor <= last && keys.length < MAX_DAILY_BUCKETS) {
+    keys.push(
+      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`,
+    );
+    cursor.setDate(cursor.getDate() + 1);
   }
-  return breakdown(kasa, hareketler, (t) => t.slice(0, 10), keys, (k) => `${k.slice(8, 10)}.${k.slice(5, 7)}.${k.slice(0, 4)}`);
+  return breakdown(registers, transactions, {
+    keys,
+    keyOf: (date) => date.slice(0, 10),
+    labelOf: (key) => `${key.slice(8, 10)}.${key.slice(5, 7)}.${key.slice(0, 4)}`,
+  });
 }

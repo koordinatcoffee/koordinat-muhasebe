@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  // Electron dosyayı file:// ile açtığı için göreli yollar gerekli
+  // Relative asset paths are required because Electron loads the app via file://
   base: './',
   build: {
     chunkSizeWarningLimit: 1000,

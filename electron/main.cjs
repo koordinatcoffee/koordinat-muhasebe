@@ -1,17 +1,17 @@
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
 
-// `npm run electron:dev` Vite dev sunucusunu kullanır, diğer durumlarda dist/ yüklenir
+// `npm run electron:dev` loads the Vite dev server; otherwise the built dist/ is loaded
 const isDev = process.env.ELECTRON_DEV === '1';
 
 function createWindow() {
-  const win = new BrowserWindow({
+  const mainWindow = new BrowserWindow({
     width: 1320,
     height: 860,
-    minWidth: 1024,
-    minHeight: 640,
+    minWidth: 420,
+    minHeight: 600,
     title: 'Koordinat Muhasebe',
-    backgroundColor: '#f7f4f0',
+    backgroundColor: '#f5f6f4',
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
@@ -21,13 +21,13 @@ function createWindow() {
   });
 
   if (isDev) {
-    win.loadURL('http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5173');
   } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
-  // Harici linkler varsayılan tarayıcıda açılsın
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  // Open external links in the default browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });

@@ -62,15 +62,51 @@ npm run dist       # ikisi birden
 
 - Supabase adresi ve anahtarı build sırasında uygulamaya gömülür; `.env` build öncesi dolu olmalı.
 - Windows kurulumu macOS'tan da alınabilir; sorun çıkarsa Windows bilgisayarda `npm install && npm run dist:win` çalıştırın.
-- Uygulama ikonu için `build/icon.icns` (mac) ve `build/icon.ico` (Windows) dosyalarını ekleyin.
+- Uygulama ikonu `build/icon.png` (1024×1024, `build/icon-source.jpeg` rozet logosundan üretildi); electron-builder mac ve Windows ikonlarını buradan oluşturur.
 - İmzasız macOS uygulaması ilk açılışta uyarı verebilir: Finder'da sağ tık → Aç.
+
+## Responsive
+
+Arayüz masaüstü, tablet ve telefonda çalışır:
+
+- **≥ 1024px:** sabit sol menü
+- **< 1024px:** üst bar + açılır menü (hamburger)
+- **≤ 720px:** tek sütun formlar, 2 sütun özet kartları, listeler kart görünümüne döner
+- **Yazdırma:** A4 düzeni, logo başlıklı rapor
+
+## Veritabanı
+
+| Tablo | Açıklama |
+|---|---|
+| `categories` | `name`, `type` (`income` / `expense`), `group_name`, `sort_order` |
+| `daily_registers` | Günlük kasa: `date` (tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
+| `transactions` | `date`, `type` (`income` / `expense` / `payment`), `category`, `counterparty`, `payment_method` (`cash` / `card` / `bank_transfer` / `other`), `amount`, `description` |
+
+Kategori ve grup adları kullanıcıya görünen etiketlerdir (Türkçe); tablo, sütun ve değer adları İngilizcedir.
 
 ## Proje yapısı
 
 ```
-electron/main.cjs      Electron ana süreci
-supabase/schema.sql    Veritabanı şeması
-src/lib/               Supabase bağlantısı, veri erişimi, hesaplamalar, biçimlendirme, CSV
-src/pages/             Özet, Kasa, Hareketler (defter + ödemeler), Raporlar, Ayarlar, Giriş
-src/components/        Menü ve ortak bileşenler
+electron/main.cjs                 Electron main process
+supabase/schema.sql               Database schema, RLS, legacy migration, default categories
+build/icon.png                    App icon (electron-builder)
+public/favicon.png                Browser favicon
+src/
+  main.jsx, App.jsx               Entry point, auth gate, routes
+  config/navigation.js            Route paths and sidebar items
+  hooks/useAsync.js               Async data loading hook
+  lib/
+    supabaseClient.js             Supabase client
+    api.js                        Data access (daily registers, transactions, categories)
+    summary.js                    Profit/loss calculations, monthly/daily breakdowns
+    categories.js                 Category groups, cost ratios, grouping helpers
+    format.js                     Currency, date, amount parsing, labels
+    csv.js                        Excel-compatible CSV export
+  components/
+    layout/AppLayout.jsx          Sidebar, mobile top bar and drawer
+    reports/GroupedAmountTable.jsx
+    ui/                           PageHeader, StatCard, MoneyInput, MonthPicker, CategorySelect, Alert, EmptyState
+  pages/                          Login, Dashboard, DailyRegister, Transactions (ledger + payments), Reports, Settings
+  assets/brand/                   logo-compact.png, logo-full.png
+  styles/global.css               Design tokens, layout, responsive and print styles
 ```

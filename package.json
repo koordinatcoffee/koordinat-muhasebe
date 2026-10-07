@@ -2,7 +2,7 @@
   "name": "koordinat-muhasebe",
   "private": true,
   "version": "1.0.0",
-  "description": "Koordinat Coffee Factory - Gelir / Gider / Kasa takip uygulaması",
+  "description": "Koordinat Coffee Factory — income, expense and daily register tracking",
   "author": "Koordinat Coffee Factory",
   "type": "module",
   "main": "electron/main.cjs",
