@@ -41,6 +41,8 @@ export default defineConfig(({ mode }) => {
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('@supabase')) return 'supabase';
             if (id.includes('lucide-react')) return 'icons';
+            // Only loaded when exporting to Excel
+            if (id.includes('exceljs')) return 'exceljs';
             return 'vendor';
           },
         },

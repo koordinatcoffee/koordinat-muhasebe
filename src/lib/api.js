@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { normalizeIban } from './format';
 
 const PAGE_SIZE = 1000;
 
@@ -142,7 +143,7 @@ export async function listCounterparties() {
 async function saveCounterpartyDetails({ counterparty, iban, phone }) {
   const name = counterparty?.trim();
   if (!name) return;
-  const row = { name, iban: iban || null, phone: phone?.trim() || null };
+  const row = { name, iban: normalizeIban(iban) || null, phone: phone?.trim() || null };
   const { data: existing } = await supabase.from('counterparties').select('id').eq('name', name).maybeSingle();
   // Do not create empty contact cards; existing cards are kept in sync (also when cleared)
   if (!existing && !row.iban && !row.phone) return;

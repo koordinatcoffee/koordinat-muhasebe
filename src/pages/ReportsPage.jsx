@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { FileSpreadsheet, Printer } from 'lucide-react';
 import { listCategories, listDailyRegisters, listTransactions } from '../lib/api';
-import { downloadCsv } from '../lib/csv';
+import { downloadWorkbook } from '../lib/excel';
 import {
   formatCurrency, formatDate, formatPercent, monthRange, MONTH_NAMES, PAYMENT_METHOD_LABELS, todayISO,
   TRANSACTION_TYPE_LABELS, yearRange,
@@ -9,7 +9,9 @@ import {
 import { COST_RATIOS } from '../lib/categories';
 import { dailyBreakdown, monthlyBreakdown, summarize } from '../lib/summary';
 import { useAsync } from '../hooks/useAsync';
-import { EmptyState, ErrorAlert, getYearOptions, PageHeader, StatCard } from '../components/ui';
+import {
+  Alert, EmptyState, ErrorAlert, getYearOptions, PageHeader, StatCard, toUserMessage,
+} from '../components/ui';
 import GroupedAmountTable, { shareOf } from '../components/reports/GroupedAmountTable';
 import fullLogo from '../assets/brand/logo-full.png';
 
@@ -57,6 +59,8 @@ export default function ReportsPage() {
     end: todayISO(),
   });
   const [showAllEntries, setShowAllEntries] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
 
   const range =
     periodType === 'month' ? monthRange(year, month) : periodType === 'year' ? yearRange(year) : customRange;
@@ -104,57 +108,180 @@ export default function ReportsPage() {
 
   const breakdownUnitLabel = periodType === 'year' ? 'Ay' : 'Gün';
 
-  function exportToExcel() {
-    const groupRows = (groups) =>
-      groups.flatMap((group) => [[group.name, '', group.amount], ...group.items.map((item) => ['', item.name, item.amount])]);
-
-    const rows = [
-      ['Koordinat Coffee Factory - Gelir / Gider Raporu'],
-      ['Dönem', periodTitle],
-      ['Oluşturma', formatDate(todayISO())],
-      [],
-      ['ÖZET'],
-      ['Kasa Nakit', summary.registerCash],
-      ['Kasa Kredi Kartı', summary.registerCard],
-      ['Diğer Gelirler', summary.otherIncome],
-      ['TOPLAM GELİR', summary.totalIncome],
-      ['Giderler', summary.expenses],
-      ['Yapılan Ödemeler', summary.payments],
-      ['TOPLAM GİDER', summary.totalOutflow],
-      [summary.net >= 0 ? 'NET KÂR' : 'NET ZARAR', summary.net],
-      ['Kâr Marjı', formatPercent(summary.profitMargin)],
-      [],
-      ['MALİYET ORANLARI (Gelire göre)', 'Tutar', 'Oran'],
-      ...costRatioRows.map((row) => [row.label, row.amount, formatPercent(row.share)]),
-      [],
-      ['GELİR DAĞILIMI', 'Alt kalem', 'Tutar'],
-      ...groupRows(summary.incomeByGroup),
-      [],
-      ['GİDER DAĞILIMI', 'Alt kalem', 'Tutar'],
-      ...groupRows(summary.expenseByGroup),
-      [],
-      ['ÖDEMELER (Kime)', 'Tutar', 'Adet'],
-      ...summary.paymentsByCounterparty.map((row) => [row.name, row.amount, row.count]),
-      [],
-      [`${breakdownUnitLabel.toUpperCase()} BAZINDA DÖKÜM`, 'Kasa', 'Diğer Gelir', 'Toplam Gelir', 'Gider', 'Ödeme', 'Net'],
-      ...periodBreakdown.map((row) => [
-        row.label, row.registerTotal, row.otherIncome, row.totalIncome, row.expenses, row.payments, row.net,
-      ]),
-      [],
-      ['TÜM HAREKETLER'],
-      ['Tarih', 'Tür', 'Kategori', 'Firma / Kişi', 'Ödeme Yöntemi', 'Açıklama', 'Giriş', 'Çıkış'],
-      ...allEntries.map((entry) => [
-        formatDate(entry.date),
-        entryTypeLabel(entry),
-        entry.category || '',
-        entry.counterparty || '',
-        PAYMENT_METHOD_LABELS[entry.payment_method],
-        entry.description || '',
-        isInflow(entry) ? Number(entry.amount) : '',
-        isInflow(entry) ? '' : Number(entry.amount),
-      ]),
+  async function exportToExcel() {
+    setIsExporting(true);
+    setExportError(null);
+    const groupRows = (groups, total) =>
+      groups.flatMap((group) => [
+        { group: group.name, amount: group.amount, share: shareOf(group.amount, total), _style: 'group' },
+        ...group.items.map((item) => ({ item: item.name, amount: item.amount, share: shareOf(item.amount, total) })),
+      ]);
+    const groupColumns = [
+      { header: 'Grup', key: 'group', width: 32 },
+      { header: 'Alt kalem', key: 'item', width: 40 },
+      { header: 'Tutar', key: 'amount', type: 'currency', width: 18 },
+      { header: 'Pay', key: 'share', type: 'percent' },
     ];
-    downloadCsv(`koordinat-rapor-${range.start}_${range.end}.csv`, rows);
+    const percentRow = { _types: { amount: 'percent' } };
+
+    try {
+      await downloadWorkbook(`koordinat-rapor-${range.start}_${range.end}`, [
+        {
+          name: 'Özet',
+          title: 'Gelir / Gider ve Kâr-Zarar Özeti',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Kalem', key: 'label', width: 34 },
+            { header: 'Tutar', key: 'amount', type: 'currency', width: 20 },
+          ],
+          rows: [
+            { label: 'Kasa · Nakit', amount: summary.registerCash },
+            { label: 'Kasa · Kredi Kartı', amount: summary.registerCard },
+            { label: 'Diğer gelirler', amount: summary.otherIncome },
+            { label: 'TOPLAM GELİR', amount: summary.totalIncome, _style: 'group' },
+            { label: 'Giderler', amount: summary.expenses },
+            { label: 'Yapılan ödemeler', amount: summary.payments },
+            { label: 'TOPLAM GİDER', amount: summary.totalOutflow, _style: 'group' },
+            { label: 'Kâr marjı', amount: summary.profitMargin, ...percentRow },
+            { label: 'Gider / Gelir oranı', amount: summary.outflowRatio, ...percentRow },
+          ],
+          totals: {
+            label: summary.net >= 0 ? 'NET KÂR' : 'NET ZARAR',
+            amount: summary.net,
+          },
+        },
+        {
+          name: 'Maliyet Oranları',
+          title: 'Maliyet oranları (gelire göre)',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Kalem', key: 'label', width: 24 },
+            { header: 'Tutar', key: 'amount', type: 'currency', width: 18 },
+            { header: 'Gelire oranı', key: 'share', type: 'percent', width: 14 },
+            { header: 'Sektör ortalaması', key: 'benchmark', width: 20 },
+          ],
+          rows: costRatioRows,
+        },
+        {
+          name: 'Gelir Dağılımı',
+          title: 'Gelirler — ne sattık?',
+          subtitle: periodTitle,
+          columns: groupColumns,
+          rows: groupRows(summary.incomeByGroup, summary.totalIncome),
+          totals: { group: 'TOPLAM GELİR', amount: summary.totalIncome, share: summary.totalIncome > 0 ? 100 : null },
+        },
+        {
+          name: 'Gider Dağılımı',
+          title: 'Giderler — nereye harcadık?',
+          subtitle: periodTitle,
+          columns: groupColumns,
+          rows: groupRows(summary.expenseByGroup, summary.totalOutflow),
+          totals: { group: 'TOPLAM GİDER', amount: summary.totalOutflow, share: summary.totalOutflow > 0 ? 100 : null },
+        },
+        {
+          name: 'Ödemeler (Kime)',
+          title: 'Nereye ne ödeme yaptık?',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Kime', key: 'name', width: 34 },
+            { header: 'Adet', key: 'count', type: 'number' },
+            { header: 'Tutar', key: 'amount', type: 'currency', width: 18 },
+          ],
+          rows: summary.paymentsByCounterparty,
+          totals: {
+            name: 'TOPLAM',
+            count: summary.paymentsByCounterparty.reduce((count, row) => count + row.count, 0),
+            amount: summary.payments,
+          },
+        },
+        {
+          name: 'Ödeme Yöntemi',
+          title: 'Ödeme yöntemine göre giriş / çıkış',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Yöntem', key: 'method', width: 20 },
+            { header: 'Giriş', key: 'inflow', type: 'currency', width: 18 },
+            { header: 'Çıkış', key: 'outflow', type: 'currency', width: 18 },
+            { header: 'Net', key: 'net', type: 'currency', width: 18 },
+          ],
+          rows: Object.entries(summary.byPaymentMethod).map(([method, flow]) => ({
+            method: PAYMENT_METHOD_LABELS[method],
+            inflow: flow.inflow,
+            outflow: flow.outflow,
+            net: flow.inflow - flow.outflow,
+          })),
+          totals: { method: 'TOPLAM', inflow: summary.totalIncome, outflow: summary.totalOutflow, net: summary.net },
+        },
+        {
+          name: `${breakdownUnitLabel} Bazında Döküm`,
+          title: `${breakdownUnitLabel} bazında döküm`,
+          subtitle: periodTitle,
+          columns: [
+            { header: breakdownUnitLabel, key: 'label', type: periodType === 'year' ? 'text' : 'date', width: 14 },
+            { header: 'Kasa (nakit + kart)', key: 'registerTotal', type: 'currency', width: 18 },
+            { header: 'Diğer gelir', key: 'otherIncome', type: 'currency' },
+            { header: 'Toplam gelir', key: 'totalIncome', type: 'currency', width: 18 },
+            { header: 'Gider', key: 'expenses', type: 'currency' },
+            { header: 'Ödeme', key: 'payments', type: 'currency' },
+            { header: 'Net', key: 'net', type: 'currency', width: 18 },
+            { header: 'Marj', key: 'profitMargin', type: 'percent' },
+          ],
+          rows: periodBreakdown.map((row) => ({
+            ...row,
+            label: periodType === 'year' ? row.label : row.key,
+            _style: row.isEmpty ? 'muted' : undefined,
+          })),
+          totals: {
+            label: 'TOPLAM',
+            registerTotal: summary.registerTotal,
+            otherIncome: summary.otherIncome,
+            totalIncome: summary.totalIncome,
+            expenses: summary.expenses,
+            payments: summary.payments,
+            net: summary.net,
+            profitMargin: summary.profitMargin,
+            _types: { label: 'text' },
+          },
+        },
+        {
+          name: 'Tüm Hareketler',
+          title: 'Tüm hareketler',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Tarih', key: 'date', type: 'date' },
+            { header: 'Tür', key: 'type', width: 10 },
+            { header: 'Kategori', key: 'category', width: 28 },
+            { header: 'Firma / Kişi', key: 'counterparty', width: 26 },
+            { header: 'Fatura no', key: 'invoiceNo', width: 16 },
+            { header: 'Ödeme yöntemi', key: 'method', width: 14 },
+            { header: 'Açıklama', key: 'description', width: 34 },
+            { header: 'Giriş', key: 'inflow', type: 'currency' },
+            { header: 'Çıkış', key: 'outflow', type: 'currency' },
+          ],
+          rows: allEntries.map((entry) => ({
+            date: entry.date,
+            type: entryTypeLabel(entry),
+            category: entry.category,
+            counterparty: entry.counterparty,
+            invoiceNo: entry.invoice_no,
+            method: PAYMENT_METHOD_LABELS[entry.payment_method],
+            description: entry.description,
+            inflow: isInflow(entry) ? entry.amount : null,
+            outflow: isInflow(entry) ? null : entry.amount,
+          })),
+          totals: {
+            date: `TOPLAM (${allEntries.length} hareket)`,
+            inflow: summary.totalIncome,
+            outflow: summary.totalOutflow,
+            _types: { date: 'text' },
+          },
+        },
+      ]);
+    } catch (error) {
+      setExportError(error);
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -164,8 +291,8 @@ export default function ReportsPage() {
         description="Ay sonu ve yıl sonu gelir-gider, kâr-zarar ve ödeme dökümü."
         actions={
           <>
-            <button type="button" className="btn" onClick={exportToExcel} disabled={!summary}>
-              <FileSpreadsheet size={16} />Excel'e aktar
+            <button type="button" className="btn" onClick={exportToExcel} disabled={!summary || isLoading || isExporting}>
+              <FileSpreadsheet size={16} />{isExporting ? 'Hazırlanıyor…' : "Excel'e aktar"}
             </button>
             <button type="button" className="btn btn--primary" onClick={() => window.print()} disabled={!summary}>
               <Printer size={16} />Yazdır / PDF
@@ -226,6 +353,7 @@ export default function ReportsPage() {
       </div>
 
       <ErrorAlert error={error} />
+      {exportError && <Alert variant="error">Excel dosyası oluşturulamadı: {toUserMessage(exportError)}</Alert>}
       {isLoading && <p className="text-muted">Yükleniyor…</p>}
 
       {summary && !isLoading && (

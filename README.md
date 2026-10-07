@@ -8,10 +8,14 @@ React + Vite ile web'de geliştirilir, Supabase'de veri tutar ve Electron ile Wi
 | Sayfa | Ne girilir |
 |---|---|
 | **Günlük Kasa** | Her gün için **nakit** + **kredi kartı** satış toplamı. Toplam otomatik hesaplanır. Bir güne tek kayıt girilir; aynı tarih seçilirse kayıt güncellenir. İsteğe bağlı olarak tutar ürün gruplarına (sıcak kahve, soğuk içecek, tatlı…) dağıtılabilir. |
-| **Yapılan Ödemeler** | Kime, ne kadar, hangi yöntemle ödendi (tedarikçi, kira, maaş, vergi…). "Kime ne ödedik" özeti. |
-| **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek. Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; o ödeme silinirse tekrar bekleyene döner. |
+| **Yapılan Ödemeler** | Kime, ne kadar, hangi yöntemle ödendi (tedarikçi, kira, maaş, vergi…). Firma/kişinin **IBAN** ve **telefonu**, **fatura no** ve **fatura tutarı**; her faturanın **kalan borcu** (kısmi ödeme). "Kime ne ödedik" ve "Açık faturalar" özetleri. |
+| **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek (IBAN, telefon, fatura bilgileriyle). Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; o ödeme silinirse tekrar bekleyene döner. |
 | **Raporlar** | Aylık / yıllık / tarih aralığı kâr-zarar, kâr marjı, gider dağılımı, kime ne ödendiği, ödeme yöntemine göre giriş-çıkış, aylık veya günlük döküm, tüm hareketler. **Yazdır / PDF** ve **Excel'e aktar**. |
 | **Ayarlar** | Gelir ve gider kategorileri (ana grup → alt kalem). |
+
+Özet, Günlük Kasa, Yapılan / Yapılacak Ödemeler ve Raporlar sayfalarında **Excel'e aktar** düğmesi biçimli bir `.xlsx` dosyası indirir (her bölüm ayrı sayfa, para ve tarih biçimleri, toplam satırları, A4 yazdırma ayarı).
+
+IBAN ve telefon firma/kişi adına göre saklanır; aynı ad tekrar seçildiğinde otomatik dolar. Bir faturanın kalan borcu = fatura tutarı − aynı firma ve fatura no ile yapılan ödemelerin toplamı.
 
 ### Kategoriler
 
@@ -85,8 +89,10 @@ Arayüz masaüstü, tablet ve telefonda çalışır:
 |---|---|
 | `categories` | `name`, `type` (`income` / `expense`), `group_name`, `sort_order` |
 | `daily_registers` | Günlük kasa: `date` (tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
-| `transactions` | `date`, `type` (`income` / `expense` / `payment`), `category`, `counterparty`, `payment_method` (`cash` / `card` / `bank_transfer` / `other`), `amount`, `description` |
-| `planned_payments` | Yapılacak ödemeler: `due_date`, `category`, `counterparty`, `payment_method`, `amount`, `description`, `transaction_id` (ödendiğinde oluşan `payment` kaydı; boşsa bekliyor). `pay_planned_payment(planned_id, paid_on)` fonksiyonu ödemeyi tek adımda kaydeder. |
+| `transactions` | `date`, `type` (`income` / `expense` / `payment`), `category`, `counterparty`, `payment_method` (`cash` / `card` / `bank_transfer` / `other`), `amount`, `description`, `invoice_no`, `invoice_amount` |
+| `counterparties` | Firma / kişi iletişim bilgisi: `name` (tekil), `iban`, `phone` |
+| `invoice_balances` (view) | Fatura başına `invoice_amount`, `paid_amount`, `remaining_amount`, `last_payment_date` |
+| `planned_payments` | Yapılacak ödemeler: `due_date`, `category`, `counterparty`, `payment_method`, `amount`, `description`, `invoice_no`, `invoice_amount`, `transaction_id` (ödendiğinde oluşan `payment` kaydı; boşsa bekliyor). `pay_planned_payment(planned_id, paid_on)` fonksiyonu ödemeyi tek adımda kaydeder. |
 
 Kategori ve grup adları kullanıcıya görünen etiketlerdir (Türkçe); tablo, sütun ve değer adları İngilizcedir.
 
@@ -108,9 +114,11 @@ src/
     summary.js                    Profit/loss calculations, monthly/daily breakdowns
     categories.js                 Category groups, cost ratios, grouping helpers
     format.js                     Currency, date, amount parsing, labels
-    csv.js                        Excel-compatible CSV export
+    excel.js                      Formatted .xlsx export (exceljs, loaded on demand)
+    invoices.js                   Invoice balance lookup, remaining debt
   components/
     layout/AppLayout.jsx          Sidebar, mobile top bar and drawer
+    payments/PaymentFields.jsx    Counterparty (IBAN, phone) and invoice form fields
     reports/GroupedAmountTable.jsx
     ui/                           PageHeader, StatCard, MoneyInput, MonthPicker, CategorySelect, Alert, EmptyState
   pages/                          Login, Dashboard, DailyRegister, Transactions (payments made), PlannedPayments, Reports, Settings

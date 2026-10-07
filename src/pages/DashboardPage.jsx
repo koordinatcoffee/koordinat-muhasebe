@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { FileSpreadsheet, Plus } from 'lucide-react';
 import { listDailyRegisters, listPendingPlannedPayments, listRecentTransactions, listTransactions } from '../lib/api';
 import {
   formatCurrency, formatDate, formatPercent, monthRange, MONTH_NAMES, PAYMENT_METHOD_LABELS, todayISO,
@@ -7,9 +8,10 @@ import {
 } from '../lib/format';
 import { daysBetween, dueStatus, summarizePlanned, UPCOMING_DAYS } from '../lib/plannedPayments';
 import { summarize } from '../lib/summary';
+import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { ROUTES } from '../config/navigation';
-import { Alert, EmptyState, ErrorAlert, PageHeader, StatCard } from '../components/ui';
+import { Alert, EmptyState, ErrorAlert, PageHeader, StatCard, toUserMessage } from '../components/ui';
 
 const RECENT_TRANSACTION_LIMIT = 8;
 const UPCOMING_PAYMENT_LIMIT = 8;
@@ -18,6 +20,9 @@ export default function DashboardPage() {
   const today = todayISO();
   const now = new Date();
   const currentMonth = monthRange(now.getFullYear(), now.getMonth() + 1);
+  const monthTitle = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState(null);
 
   const { data, isLoading, error } = useAsync(async () => {
     const [registers, transactions, recentTransactions, plannedPayments] = await Promise.all([
@@ -36,10 +41,118 @@ export default function DashboardPage() {
       monthSummary: summarize(registers, transactions),
       isTodayRegisterMissing: !registers.some((r) => r.date === today),
       recentTransactions,
+      monthTransactions: transactions,
       plannedSummary: summarizePlanned(upcomingPayments, today),
+      allUpcomingPayments: upcomingPayments,
       upcomingPayments: upcomingPayments.slice(0, UPCOMING_PAYMENT_LIMIT),
     };
   }, []);
+
+  async function exportToExcel() {
+    setIsExporting(true);
+    setExportError(null);
+    const { todaySummary: day, monthSummary: month } = data;
+    const percentRow = { _types: { today: 'percent', month: 'percent' } };
+    try {
+      await downloadWorkbook(`koordinat-ozet-${today}`, [
+        {
+          name: 'Özet',
+          title: 'Özet',
+          subtitle: `Bugün ${formatDate(today)} · ${monthTitle}`,
+          columns: [
+            { header: 'Kalem', key: 'label', width: 30 },
+            { header: `Bugün (${formatDate(today)})`, key: 'today', type: 'currency', width: 20 },
+            { header: monthTitle, key: 'month', type: 'currency', width: 20 },
+          ],
+          rows: [
+            { label: 'Kasa · Nakit', today: day.registerCash, month: month.registerCash },
+            { label: 'Kasa · Kredi Kartı', today: day.registerCard, month: month.registerCard },
+            { label: 'Kasa toplamı', today: day.registerTotal, month: month.registerTotal },
+            { label: 'Diğer gelirler', today: day.otherIncome, month: month.otherIncome },
+            { label: 'TOPLAM GELİR', today: day.totalIncome, month: month.totalIncome, _style: 'group' },
+            { label: 'Giderler', today: day.expenses, month: month.expenses },
+            { label: 'Yapılan ödemeler', today: day.payments, month: month.payments },
+            { label: 'TOPLAM GİDER', today: day.totalOutflow, month: month.totalOutflow, _style: 'group' },
+            { label: 'Kâr marjı', today: day.profitMargin, month: month.profitMargin, ...percentRow },
+          ],
+          totals: { label: 'NET (Gelir − Gider)', today: day.net, month: month.net },
+        },
+        {
+          name: 'Yaklaşan Ödemeler',
+          title: `Yaklaşan ödemeler (gecikmiş + önümüzdeki ${UPCOMING_DAYS} gün)`,
+          subtitle: `${formatDate(today)} itibarıyla`,
+          columns: [
+            { header: 'Ödeme tarihi', key: 'dueDate', type: 'date', width: 13 },
+            { header: 'Durum', key: 'status', width: 14 },
+            { header: 'Kime', key: 'counterparty', width: 28 },
+            { header: 'Kategori', key: 'category', width: 24 },
+            { header: 'Fatura no', key: 'invoiceNo', width: 16 },
+            { header: 'Açıklama', key: 'description', width: 30 },
+            { header: 'Ödeme yöntemi', key: 'method', width: 14 },
+            { header: 'Tutar', key: 'amount', type: 'currency', width: 18 },
+          ],
+          rows: data.allUpcomingPayments.map((payment) => {
+            const status = dueStatus(payment.due_date, today);
+            return {
+              dueDate: payment.due_date,
+              status: status.label,
+              counterparty: payment.counterparty,
+              category: payment.category,
+              invoiceNo: payment.invoice_no,
+              description: payment.description,
+              method: PAYMENT_METHOD_LABELS[payment.payment_method],
+              amount: payment.amount,
+              _style: status.tone === 'expense' ? 'negative' : undefined,
+            };
+          }),
+          totals: {
+            counterparty: `TOPLAM (${data.plannedSummary.total.count} ödeme)`,
+            amount: data.plannedSummary.total.amount,
+          },
+        },
+        {
+          name: 'Bu Ayın Hareketleri',
+          title: `${monthTitle} hareketleri`,
+          subtitle: 'Kasa hariç gelir, gider ve ödemeler',
+          columns: [
+            { header: 'Tarih', key: 'date', type: 'date' },
+            { header: 'Tür', key: 'type', width: 10 },
+            { header: 'Kategori', key: 'category', width: 26 },
+            { header: 'Firma / Kişi', key: 'counterparty', width: 26 },
+            { header: 'Fatura no', key: 'invoiceNo', width: 16 },
+            { header: 'Ödeme yöntemi', key: 'method', width: 14 },
+            { header: 'Açıklama', key: 'description', width: 30 },
+            { header: 'Giriş', key: 'inflow', type: 'currency' },
+            { header: 'Çıkış', key: 'outflow', type: 'currency' },
+          ],
+          rows: [...data.monthTransactions].reverse().map((transaction) => {
+            const isIncome = transaction.type === 'income';
+            return {
+              date: transaction.date,
+              type: TRANSACTION_TYPE_LABELS[transaction.type],
+              category: transaction.category,
+              counterparty: transaction.counterparty,
+              invoiceNo: transaction.invoice_no,
+              method: PAYMENT_METHOD_LABELS[transaction.payment_method],
+              description: transaction.description,
+              inflow: isIncome ? transaction.amount : null,
+              outflow: isIncome ? null : transaction.amount,
+            };
+          }),
+          totals: {
+            date: `TOPLAM (${data.monthTransactions.length} hareket)`,
+            inflow: month.otherIncome,
+            outflow: month.totalOutflow,
+            _types: { date: 'text' },
+          },
+        },
+      ]);
+    } catch (exportFailure) {
+      setExportError(exportFailure);
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   return (
     <>
@@ -51,10 +164,14 @@ export default function DashboardPage() {
             <Link className="btn btn--primary" to={ROUTES.dailyRegister}><Plus size={16} />Günlük kasa</Link>
             <Link className="btn" to={ROUTES.payments}><Plus size={16} />Yapılan ödeme</Link>
             <Link className="btn" to={ROUTES.plannedPayments}><Plus size={16} />Yapılacak ödeme</Link>
+            <button type="button" className="btn" onClick={exportToExcel} disabled={!data || isExporting}>
+              <FileSpreadsheet size={16} />{isExporting ? 'Hazırlanıyor…' : "Excel'e aktar"}
+            </button>
           </>
         }
       />
       <ErrorAlert error={error} />
+      {exportError && <Alert variant="error">Excel dosyası oluşturulamadı: {toUserMessage(exportError)}</Alert>}
       {isLoading && <p className="text-muted">Yükleniyor…</p>}
 
       {data && (
@@ -86,7 +203,7 @@ export default function DashboardPage() {
             />
           </div>
 
-          <h2 className="section-title">{MONTH_NAMES[now.getMonth()]} {now.getFullYear()}</h2>
+          <h2 className="section-title">{monthTitle}</h2>
           <div className="stat-grid">
             <StatCard
               label="Kasa Toplamı"

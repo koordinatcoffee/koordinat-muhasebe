@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import {
   deleteDailyRegister, getDailyRegister, listCategories, listDailyRegisters, saveDailyRegister,
 } from '../lib/api';
 import {
-  formatCurrency, formatDate, monthRange, parseAmount, roundAmount, toAmountInput, todayISO,
+  formatCurrency, formatDate, monthRange, MONTH_NAMES, parseAmount, roundAmount, toAmountInput, todayISO,
 } from '../lib/format';
 import { groupCategories, NON_REGISTER_INCOME_GROUPS } from '../lib/categories';
+import { summarize } from '../lib/summary';
+import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, toUserMessage } from '../components/ui';
 
@@ -17,6 +19,8 @@ const toBreakdownInputs = (salesBreakdown) =>
 
 const hasBreakdown = (register) => Object.keys(register?.sales_breakdown || {}).length > 0;
 
+const weekdayOf = (isoDate) => new Date(`${isoDate}T00:00:00`).toLocaleDateString('tr-TR', { weekday: 'long' });
+
 export default function DailyRegisterPage() {
   const now = new Date();
   const [period, setPeriod] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
@@ -24,6 +28,7 @@ export default function DailyRegisterPage() {
   const [existingRegister, setExistingRegister] = useState(null);
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
   const range = monthRange(period.year, period.month);
@@ -124,11 +129,78 @@ export default function DailyRegisterPage() {
     { cash: 0, card: 0 },
   );
 
+  async function exportToExcel() {
+    setIsExporting(true);
+    try {
+      const periodTitle = `${MONTH_NAMES[period.month - 1]} ${period.year}`;
+      const monthTotal = monthTotals.cash + monthTotals.card;
+      const sales = summarize(rows, [], categories.data || []);
+      const share = (amount) => (monthTotal > 0 ? (amount / monthTotal) * 100 : null);
+
+      await downloadWorkbook(`koordinat-gunluk-kasa-${range.start.slice(0, 7)}`, [
+        {
+          name: 'Günlük Kasa',
+          title: 'Günlük Kasa',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Tarih', key: 'date', type: 'date' },
+            { header: 'Gün', key: 'weekday', width: 12 },
+            { header: 'Nakit', key: 'cash', type: 'currency', width: 18 },
+            { header: 'Kredi kartı', key: 'card', type: 'currency', width: 18 },
+            { header: 'Toplam', key: 'total', type: 'currency', width: 18 },
+            { header: 'Not', key: 'note', width: 36 },
+          ],
+          rows: [...rows].reverse().map((register) => ({
+            date: register.date,
+            weekday: weekdayOf(register.date),
+            cash: register.cash,
+            card: register.card,
+            total: register.total,
+            note: register.note,
+          })),
+          totals: {
+            date: `TOPLAM (${rows.length} gün)`,
+            cash: monthTotals.cash,
+            card: monthTotals.card,
+            total: monthTotal,
+            _types: { date: 'text' },
+          },
+          note: rows.length ? `Günlük ortalama: ${formatCurrency(monthTotal / rows.length)}` : undefined,
+        },
+        {
+          name: 'Satış Dağılımı',
+          title: 'Satış dağılımı (ürün grubuna göre)',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Grup', key: 'group', width: 30 },
+            { header: 'Alt kalem', key: 'item', width: 44 },
+            { header: 'Tutar', key: 'amount', type: 'currency', width: 18 },
+            { header: 'Pay', key: 'share', type: 'percent' },
+          ],
+          rows: sales.incomeByGroup.flatMap((group) => [
+            { group: group.name, amount: group.amount, share: share(group.amount), _style: 'group' },
+            ...group.items.map((item) => ({ item: item.name, amount: item.amount, share: share(item.amount) })),
+          ]),
+          totals: { group: 'TOPLAM', amount: monthTotal, share: monthTotal > 0 ? 100 : null },
+        },
+      ]);
+    } catch (error) {
+      setFeedback({ variant: 'error', message: `Excel dosyası oluşturulamadı: ${toUserMessage(error)}` });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Günlük Kasa"
         description="Gün sonunda kasadaki nakit ve kredi kartı (POS / Z raporu) satış toplamlarını girin."
+        actions={
+          <button type="button" className="btn" onClick={exportToExcel} disabled={!registers.data || isExporting}>
+            <FileSpreadsheet size={16} />{isExporting ? 'Hazırlanıyor…' : "Excel'e aktar"}
+          </button>
+        }
       />
 
       <form className="card card--form" onSubmit={handleSubmit}>

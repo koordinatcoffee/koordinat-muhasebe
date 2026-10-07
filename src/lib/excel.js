@@ -8,7 +8,8 @@ import { formatDate, todayISO } from './format.js';
  *   title:    heading shown above the table,
  *   subtitle: period / filter line (optional),
  *   columns:  [{ header, key, type: 'text' | 'currency' | 'date' | 'number' | 'percent', width }],
- *   rows:     [{ [key]: value, _style?: 'group' | 'total' | 'muted' | 'positive' | 'negative' }],
+ *   rows:     [{ [key]: value, _style?: 'group' | 'total' | 'muted' | 'positive' | 'negative', _types?: { [key]: type } }],
+ *             _types overrides a column's type for that row (e.g. a percent row in an amount column),
  *   totals:   { [key]: value } — bold footer row (optional),
  *   note:     line printed under the table (optional),
  * }
@@ -125,7 +126,7 @@ function addSheet(workbook, sheet, usedNames) {
   const writeRow = (rowNumber, values, style) => {
     const row = worksheet.getRow(rowNumber);
     columns.forEach((column, index) => {
-      const type = column.type || 'text';
+      const type = values._types?.[column.key] || column.type || 'text';
       const cell = row.getCell(index + 1);
       cell.value = toCellValue(values[column.key], type);
       if (NUMBER_FORMATS[type]) cell.numFmt = NUMBER_FORMATS[type];
@@ -163,7 +164,7 @@ function addSheet(workbook, sheet, usedNames) {
   }
 
   if (sheet.totals) {
-    writeRow(rowNumber, sheet.totals, 'total');
+    writeRow(rowNumber, sheet.totals, sheet.totals._style || 'total');
     rowNumber += 1;
   }
 
