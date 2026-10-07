@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { FileSpreadsheet } from 'lucide-react';
 import {
   deletePlannedPayment, listCategories, listCounterparties, listInvoiceBalances, listPendingPlannedPayments,
-  payPlannedPayment, savePlannedPayment,
+  payPlannedPayment, savePlannedPayment, setPlannedPaymentUnpaid,
 } from '../lib/api';
 import {
-  formatCurrency, formatDate, formatIban, parseAmount, PAYMENT_METHOD_LABELS, toAmountInput, todayISO,
+  formatCurrency, formatDate, formatIban, parseAmount, PAYMENT_METHOD_LABELS, roundAmount, toAmountInput, todayISO,
 } from '../lib/format';
 import { dueStatus, summarizePlanned, UPCOMING_DAYS } from '../lib/plannedPayments';
 import { buildInvoiceLookup, remainingDebt } from '../lib/invoices';
@@ -19,6 +19,13 @@ import {
 import {
   CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
 } from '../components/payments/PaymentFields';
+
+/** Table tabs: every pending payment, those not marked, those marked "Ödenmedi" */
+const STATUS_FILTERS = [
+  { value: 'all', label: 'Tümü', matches: () => true },
+  { value: 'pending', label: 'Bekleyen', matches: (payment) => !payment.marked_unpaid_at },
+  { value: 'unpaid', label: 'Ödenmedi', matches: (payment) => Boolean(payment.marked_unpaid_at) },
+];
 
 const createEmptyForm = (overrides = {}) => ({
   id: null,
@@ -49,6 +56,7 @@ export default function PlannedPaymentsPage() {
   const today = todayISO();
   const [form, setForm] = useState(() => createEmptyForm());
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -121,6 +129,23 @@ export default function PlannedPaymentsPage() {
     }
   }
 
+  async function toggleUnpaid(payment) {
+    const isUnpaid = !payment.marked_unpaid_at;
+    setFeedback(null);
+    try {
+      await setPlannedPaymentUnpaid(payment.id, isUnpaid);
+      setFeedback({
+        variant: isUnpaid ? 'warning' : 'success',
+        message: isUnpaid
+          ? `Ödenmedi olarak işaretlendi: ${describe(payment)}. Ödeme bekleyen listesinde kalır; ödenince "Ödendi"ye basın.`
+          : `"Ödenmedi" işareti kaldırıldı: ${describe(payment)}`,
+      });
+      payments.reload();
+    } catch (error) {
+      setFeedback({ variant: 'error', message: toUserMessage(error) });
+    }
+  }
+
   async function handleDelete(payment) {
     if (!window.confirm(`${describe(payment)} silinsin mi?`)) return;
     try {
@@ -132,7 +157,7 @@ export default function PlannedPaymentsPage() {
     }
   }
 
-  const visiblePayments = useMemo(() => {
+  const searchedPayments = useMemo(() => {
     const searchTerm = search.trim().toLocaleLowerCase('tr');
     return (payments.data || []).filter(
       (payment) =>
@@ -143,12 +168,27 @@ export default function PlannedPaymentsPage() {
     );
   }, [payments.data, search]);
 
-  const summary = useMemo(() => summarizePlanned(visiblePayments, today), [visiblePayments, today]);
+  const activeFilter = STATUS_FILTERS.find((filter) => filter.value === statusFilter);
+  const visiblePayments = searchedPayments.filter(activeFilter.matches);
+  const countByFilter = Object.fromEntries(
+    STATUS_FILTERS.map((filter) => [filter.value, searchedPayments.filter(filter.matches).length]),
+  );
+  const unpaidAmount = searchedPayments
+    .filter((payment) => payment.marked_unpaid_at)
+    .reduce((total, payment) => total + Number(payment.amount), 0);
+
+  // Cards and the monthly box cover every pending payment; the tabs only filter the table
+  const summary = useMemo(() => summarizePlanned(searchedPayments, today), [searchedPayments, today]);
+  const tableTotal = visiblePayments.reduce((total, payment) => total + Number(payment.amount), 0);
 
   async function exportToExcel() {
     setIsExporting(true);
     try {
-      const subtitle = [`${formatDate(today)} itibarıyla bekleyenler`, search.trim() && `Arama: "${search.trim()}"`]
+      const subtitle = [
+        `${formatDate(today)} itibarıyla bekleyenler`,
+        statusFilter !== 'all' && `Filtre: ${activeFilter.label}`,
+        search.trim() && `Arama: "${search.trim()}"`,
+      ]
         .filter(Boolean)
         .join(' · ');
       await downloadWorkbook(`koordinat-yapilacak-odemeler-${today}`, [
@@ -159,6 +199,7 @@ export default function PlannedPaymentsPage() {
           columns: [
             { header: 'Ödeme tarihi', key: 'dueDate', type: 'date', width: 13 },
             { header: 'Durum', key: 'status', width: 14 },
+            { header: 'Ödenmedi', key: 'unpaid', width: 12 },
             { header: 'Kime ödenecek', key: 'counterparty', width: 26 },
             { header: 'IBAN', key: 'iban', width: 34 },
             { header: 'Telefon', key: 'phone', width: 16 },
@@ -176,6 +217,7 @@ export default function PlannedPaymentsPage() {
             return {
               dueDate: payment.due_date,
               status: status.label,
+              unpaid: payment.marked_unpaid_at ? `Evet (${formatDate(payment.marked_unpaid_at)})` : '',
               counterparty: payment.counterparty,
               iban: contact?.iban ? formatIban(contact.iban) : '',
               phone: contact?.phone,
@@ -186,11 +228,11 @@ export default function PlannedPaymentsPage() {
               description: payment.description,
               method: PAYMENT_METHOD_LABELS[payment.payment_method],
               amount: payment.amount,
-              _style: status.tone === 'expense' ? 'negative' : undefined,
+              _style: status.tone === 'expense' || payment.marked_unpaid_at ? 'negative' : undefined,
             };
           }),
-          totals: { counterparty: `TOPLAM (${summary.total.count} ödeme)`, amount: summary.total.amount },
-          note: 'Kırmızı satırlar: ödeme tarihi geçmiş. "Faturada kalan borç": bu ödeme yapılmadan önceki kalan tutar.',
+          totals: { counterparty: `TOPLAM (${visiblePayments.length} ödeme)`, amount: tableTotal },
+          note: 'Kırmızı satırlar: ödeme tarihi geçmiş veya "Ödenmedi" işaretli. "Faturada kalan borç": bu ödeme yapılmadan önceki kalan tutar.',
         },
         {
           name: 'Aylara Göre',
@@ -312,6 +354,12 @@ export default function PlannedPaymentsPage() {
             value={summary.upcoming.amount}
             hint={`${summary.upcoming.count} ödeme · bugün dahil`}
           />
+          <StatCard
+            label="Ödenmedi işaretli"
+            value={roundAmount(unpaidAmount)}
+            tone={countByFilter.unpaid ? 'negative' : undefined}
+            hint={`${countByFilter.unpaid} ödeme`}
+          />
           <StatCard label="Toplam bekleyen" value={summary.total.amount} hint={`${summary.total.count} ödeme`} emphasized />
         </div>
       )}
@@ -321,6 +369,19 @@ export default function PlannedPaymentsPage() {
           <div className="card__header card__header--wrap">
             <h3>Bekleyen ödemeler</h3>
             <div className="toolbar">
+              <div className="segmented" role="group" aria-label="Duruma göre filtrele">
+                {STATUS_FILTERS.map((filter) => (
+                  <button
+                    key={filter.value}
+                    type="button"
+                    className={`segmented__option ${filter.value === 'unpaid' ? 'segmented__option--expense' : ''} ${statusFilter === filter.value ? 'is-active' : ''}`}
+                    aria-pressed={statusFilter === filter.value}
+                    onClick={() => setStatusFilter(filter.value)}
+                  >
+                    {filter.label} ({countByFilter[filter.value]})
+                  </button>
+                ))}
+              </div>
               <input type="search" placeholder="Ara…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Ara" />
             </div>
           </div>
@@ -328,7 +389,7 @@ export default function PlannedPaymentsPage() {
           {payments.isLoading ? (
             <p className="text-muted">Yükleniyor…</p>
           ) : visiblePayments.length === 0 ? (
-            <EmptyState>Bekleyen ödeme yok.</EmptyState>
+            <EmptyState>{statusFilter === 'unpaid' ? 'Ödenmedi işaretli ödeme yok.' : 'Bekleyen ödeme yok.'}</EmptyState>
           ) : (
             <div className="table-scroll">
               <table className="data-table data-table--stack">
@@ -352,9 +413,21 @@ export default function PlannedPaymentsPage() {
                     const contact = contactOf(payment.counterparty);
                     const remaining = remainingOf(payment);
                     return (
-                      <tr key={payment.id} className={form.id === payment.id ? 'is-selected' : undefined}>
+                      <tr
+                        key={payment.id}
+                        className={form.id === payment.id ? 'is-selected' : payment.marked_unpaid_at ? 'is-unpaid' : undefined}
+                      >
                         <td data-label="Ödeme tarihi">{formatDate(payment.due_date)}</td>
-                        <td data-label="Durum"><span className={`badge badge--${status.tone}`}>{status.label}</span></td>
+                        <td data-label="Durum">
+                          <span className={`badge badge--${status.tone}`}>{status.label}</span>
+                          {payment.marked_unpaid_at && (
+                            <div>
+                              <span className="badge badge--expense" title={`${formatDate(payment.marked_unpaid_at)} tarihinde işaretlendi`}>
+                                Ödenmedi
+                              </span>
+                            </div>
+                          )}
+                        </td>
                         <td data-label="Kime">
                           {payment.counterparty}
                           {contact?.phone && <div className="text-muted text-small">{contact.phone}</div>}
@@ -375,6 +448,15 @@ export default function PlannedPaymentsPage() {
                         </td>
                         <td className="row-actions">
                           <button type="button" className="btn btn--primary btn--sm" onClick={() => handlePay(payment)}>Ödendi</button>
+                          <button
+                            type="button"
+                            className={`btn btn--sm btn--unpaid ${payment.marked_unpaid_at ? 'is-active' : ''}`}
+                            aria-pressed={Boolean(payment.marked_unpaid_at)}
+                            title={payment.marked_unpaid_at ? 'İşareti kaldırmak için tıklayın' : 'Ödenmedi olarak işaretle'}
+                            onClick={() => toggleUnpaid(payment)}
+                          >
+                            Ödenmedi
+                          </button>
                           <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(payment)}>Düzenle</button>
                           <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(payment)}>Sil</button>
                         </td>

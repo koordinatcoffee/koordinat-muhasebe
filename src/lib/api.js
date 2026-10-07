@@ -186,6 +186,16 @@ export async function deletePlannedPayment(id) {
   unwrap(await supabase.from('planned_payments').delete().eq('id', id));
 }
 
+/** Marks a pending planned payment as not paid ("Ödenmedi"), or clears the mark */
+export async function setPlannedPaymentUnpaid(id, isUnpaid) {
+  unwrap(
+    await supabase
+      .from('planned_payments')
+      .update({ marked_unpaid_at: isUnpaid ? new Date().toISOString() : null })
+      .eq('id', id),
+  );
+}
+
 /** Records the planned payment as made on paidOn; returns the created payment transaction */
 export async function payPlannedPayment(id, paidOn) {
   return unwrap(await supabase.rpc('pay_planned_payment', { planned_id: id, paid_on: paidOn }));

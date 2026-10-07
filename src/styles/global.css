@@ -249,6 +249,61 @@ input::placeholder { color: #9aa6a2; }
 input.is-invalid { border-color: var(--color-negative); }
 input:disabled, select:disabled { background-color: var(--color-surface-muted); cursor: not-allowed; }
 
+/* Searchable select (CategorySelect) */
+.combobox { position: relative; }
+.combobox input { padding-right: 36px; text-overflow: ellipsis; cursor: pointer; }
+.combobox.is-open input { cursor: text; }
+.combobox__chevron { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); pointer-events: none; }
+.combobox__clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.combobox__clear:hover { background: var(--color-surface-muted); color: var(--color-text); }
+.combobox__list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 240px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+.combobox__group {
+  position: sticky;
+  top: -4px;
+  padding: 8px 8px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+.combobox__option { padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.combobox__option.is-active { background: var(--color-primary-soft); }
+.combobox__option.is-selected { font-weight: 650; color: var(--color-primary); }
+.combobox__empty { padding: 10px; color: var(--color-text-muted); }
+
 /* Custom chevron replaces the native select arrow so it sits inside the field */
 select {
   padding-right: 36px;
@@ -466,6 +521,9 @@ input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var
 .badge--payment { background: #fdf0de; color: #9a5b06; }
 .badge--info { background: var(--color-info-soft); color: var(--color-info); }
 .balance-text { white-space: nowrap; }
+.btn--unpaid { color: var(--color-negative); }
+.btn--unpaid.is-active { background: var(--color-negative); border-color: var(--color-negative); color: #fff; }
+.data-table tr.is-unpaid { background: var(--color-negative-soft); }
 .balance-text .badge { margin-left: 4px; }
 .badge--tiny { margin-left: 8px; padding: 1px 6px; font-size: 10.5px; }
 

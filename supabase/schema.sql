@@ -78,6 +78,10 @@ create table if not exists public.planned_payments (
 
 create index if not exists planned_payments_due_date_idx on public.planned_payments (due_date);
 
+-- marked_unpaid_at: set when the payment was marked "Ödenmedi" (not paid on time);
+-- it stays pending and can still be paid later
+alter table public.planned_payments add column if not exists marked_unpaid_at timestamptz;
+
 -- ---------------------------------------------------------------------------
 -- Invoice details on payments. A payment can cover an invoice partly:
 --   invoice_amount is the invoice total; the remaining debt of an invoice is
