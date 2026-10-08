@@ -43,7 +43,7 @@ Kâr Marjı    = Net / Toplam Gelir
 ### Kullanıcılar ve yetkiler
 
 - **Yönetici** tüm sayfaları görür ve Ayarlar → Kullanıcılar'dan kullanıcı ekler (e-posta + şifre), şifresini sıfırlar, aktif / pasif yapar ve hangi sayfaları açabileceğini seçer.
-- **Kullanıcı** yalnızca işaretlenen sayfaları görür; kayıt girme / düzenleme / silme de veritabanında (RLS) aynı sayfa yetkisine bağlıdır. Okuma her aktif kullanıcıya açıktır (Özet ve Raporlar tüm tabloları birleştirir).
+- **Kullanıcı** için her sayfa ayrı ayarlanır: **Yok** (sayfa görünmez), **Görüntüle** (kayıtları görür, Excel'e aktarır; ekleyemez / değiştiremez / silemez) veya **Düzenle** (tüm işlemler). Ekleme / değiştirme / silme veritabanında (RLS) da "Düzenle" yetkisine bağlıdır. Okuma her aktif kullanıcıya açıktır (Özet ve Raporlar tüm tabloları birleştirir); personel verisi yalnızca Personel Avansları yetkisiyle okunur.
 - **Pasif** kullanıcı giriş yapamaz, açık oturumu kapatılır ve hiçbir veriye erişemez.
 - `schema.sql` ilk çalıştırıldığında mevcut tüm hesaplar yönetici olur. Supabase panelinden sonradan eklenen hesaplar pasif başlar (ilk hesap hariç); kullanıcıları uygulamadan ekleyin.
 - Kullanıcı oluşturma `admin_create_user` SQL fonksiyonuyla doğrudan `auth.users` tablosuna yazar (service role anahtarı uygulamaya konmaz).
@@ -98,7 +98,7 @@ Arayüz masaüstü, tablet ve telefonda çalışır:
 | Tablo | Açıklama |
 |---|---|
 | `employees` / `employee_salaries` / `employee_entries` | Personel; maaş geçmişi (`valid_from` ayından itibaren); avans (`advance`) ve maaş ödemesi (`salary_payment`) kayıtları. Her kayıt `transactions.employee_entry_id` ile bir ödeme kaydına yansıtılır. |
-| `app_users` | Panel kullanıcıları: `user_id` (auth.users), `email`, `full_name`, `is_admin`, `is_active`, `allowed_pages` (sayfa anahtarları) |
+| `app_users` | Panel kullanıcıları: `user_id` (auth.users), `email`, `full_name`, `is_admin`, `is_active`, `allowed_pages` (görebildiği sayfalar), `editable_pages` (düzenleyebildiği sayfalar) |
 | `categories` | `name`, `type` (`income` / `expense`), `group_name`, `sort_order` |
 | `daily_registers` | Günlük kasa: `date` (tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
 | `transactions` | `date`, `type` (`income` / `expense` / `payment`), `category`, `counterparty`, `payment_method` (`cash` / `card` / `bank_transfer` / `other`), `amount`, `description`, `invoice_no`, `invoice_amount` |

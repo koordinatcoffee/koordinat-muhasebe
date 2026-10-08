@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { RefreshCw, UserPlus } from 'lucide-react';
 import { createAppUser, listAppUsers, setAppUserPassword, updateAppUser } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -64,6 +64,7 @@ export default function UserManager() {
   const [form, setForm] = useState(createEmptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const formRef = useRef(null);
 
   const isEditing = Boolean(form.userId);
   const isSelf = form.userId === user.id;
@@ -93,7 +94,15 @@ export default function UserManager() {
   function startEditing(appUser) {
     setForm(toForm(appUser));
     setFeedback(null);
+    // The form is above the list: bring it into view so the edit is visible
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  /** The RPC signatures changed with view-only access; an old database cannot find them */
+  const toSaveErrorMessage = (error) =>
+    error?.code === 'PGRST202' || /could not find the function/i.test(error?.message || '')
+      ? 'Veritabanı güncel değil: Supabase SQL Editor\'da supabase/schema.sql dosyasını çalıştırıp tekrar deneyin.'
+      : toUserMessage(error);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -115,7 +124,7 @@ export default function UserManager() {
       setForm(createEmptyForm());
       users.reload();
     } catch (error) {
-      setFeedback({ variant: 'error', message: toUserMessage(error) });
+      setFeedback({ variant: 'error', message: toSaveErrorMessage(error) });
     } finally {
       setIsSaving(false);
     }
@@ -132,7 +141,7 @@ export default function UserManager() {
       if (form.userId === appUser.user_id) setForm(createEmptyForm());
       users.reload();
     } catch (error) {
-      setFeedback({ variant: 'error', message: toUserMessage(error) });
+      setFeedback({ variant: 'error', message: toSaveErrorMessage(error) });
     }
   }
 
@@ -145,11 +154,12 @@ export default function UserManager() {
         </button>
       </div>
       <p className="text-muted text-small">
-        Panele girecek kullanıcıları tanımlayın. Yöneticiler tüm sayfaları görür ve kullanıcıları yönetir; diğer kullanıcılar
-        yalnızca işaretlenen sayfaları açabilir ve yalnızca o sayfalarda kayıt girebilir. Pasif kullanıcılar giriş yapamaz.
+        Panele girecek kullanıcıları tanımlayın. Yöneticiler tüm sayfaları görür ve kullanıcıları yönetir; diğer kullanıcılara
+        her sayfa için Yok / Görüntüle / Düzenle yetkisi verilir. Pasif kullanıcılar giriş yapamaz. Mevcut bir kullanıcıyı
+        değiştirmek için listede "Düzenle"ye basın.
       </p>
 
-      <form className="user-form" onSubmit={handleSubmit}>
+      <form ref={formRef} className="user-form" onSubmit={handleSubmit}>
         <h4>{isEditing ? `Düzenle: ${form.email}` : 'Yeni kullanıcı'}</h4>
         <div className="form-grid">
           <label className="field">
@@ -205,33 +215,39 @@ export default function UserManager() {
 
         <div className="field">
           <span className="field__label">Sayfa yetkileri</span>
-          {form.isAdmin ? (
-            <span className="text-small">Yönetici tüm sayfaları görür ve düzenler.</span>
-          ) : (
-            <div className="page-access-list">
-              {PAGE_PERMISSIONS.map((page) => {
-                const current = form.pageAccess[page.key] || 'none';
-                return (
-                  <div key={page.key} className="page-access-row">
-                    <span>{page.label}</span>
-                    <div className="segmented segmented--sm" role="group" aria-label={`${page.label} yetkisi`}>
-                      {ACCESS_LEVELS.filter((level) => !(page.viewOnly && level.value === 'edit')).map((level) => (
-                        <button
-                          key={level.value}
-                          type="button"
-                          className={`segmented__option ${current === level.value ? 'is-active' : ''}`}
-                          aria-pressed={current === level.value}
-                          onClick={() => setPageAccess(page.key, level.value)}
-                        >
-                          {level.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          {form.isAdmin && (
+            <Alert variant="info">
+              {isSelf
+                ? 'Kendi hesabınız yönetici olarak kalır ve tüm sayfaları düzenler.'
+                : 'Yöneticiler tüm sayfaları görür ve düzenler. Sayfa bazında Görüntüle / Düzenle vermek için önce yukarıdaki "Yönetici" işaretini kaldırın.'}
+            </Alert>
           )}
+          <div className="page-access-list">
+            {PAGE_PERMISSIONS.map((page) => {
+              // Admins have full access: shown as the highest level, not changeable
+              const highestLevel = page.viewOnly ? 'view' : 'edit';
+              const current = form.isAdmin ? highestLevel : form.pageAccess[page.key] || 'none';
+              return (
+                <div key={page.key} className="page-access-row">
+                  <span>{page.label}</span>
+                  <div className="segmented segmented--sm" role="group" aria-label={`${page.label} yetkisi`}>
+                    {ACCESS_LEVELS.filter((level) => !(page.viewOnly && level.value === 'edit')).map((level) => (
+                      <button
+                        key={level.value}
+                        type="button"
+                        className={`segmented__option ${current === level.value ? 'is-active' : ''}`}
+                        aria-pressed={current === level.value}
+                        disabled={form.isAdmin}
+                        onClick={() => setPageAccess(page.key, level.value)}
+                      >
+                        {level.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {hasNoPages && <span className="field__error">En az bir sayfaya erişim verin.</span>}
           <span className="text-muted text-small">
             Görüntüle: sayfayı açar ve kayıtları görür, ekleyemez / değiştiremez / silemez. Düzenle: tüm işlemler.
