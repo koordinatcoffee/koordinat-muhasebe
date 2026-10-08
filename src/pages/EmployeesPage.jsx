@@ -11,8 +11,9 @@ import {
 import { balanceStatus, ENTRY_KIND_LABELS, monthlyBalances, salaryForMonth } from '../lib/payroll';
 import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
+import { useAccess } from '../hooks/useAccess';
 import {
-  Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, StatCard, toUserMessage,
+  Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, StatCard, toUserMessage,
 } from '../components/ui';
 
 const RESTRICT_VIOLATION = '23503';
@@ -60,6 +61,8 @@ const createEmptyEmployeeForm = (salaryMonth) => ({
 });
 
 export default function EmployeesPage() {
+  const { canEdit } = useAccess();
+  const isEditable = canEdit('employees');
   const now = new Date();
   const [period, setPeriod] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
   const range = monthRange(period.year, period.month);
@@ -383,94 +386,98 @@ export default function EmployeesPage() {
       />
       <ErrorAlert error={data.error} />
 
-      <form className="card card--form" onSubmit={handleEntrySubmit}>
-        <div className="card__header card__header--wrap">
-          <h3>{entryForm.id ? 'Kaydı düzenle' : 'Avans / maaş ödemesi gir'}</h3>
-          <div className="segmented" role="group" aria-label="Kayıt türü">
-            {Object.entries(ENTRY_KIND_LABELS).map(([kind, label]) => (
-              <button
-                type="button"
-                key={kind}
-                className={`segmented__option ${entryForm.kind === kind ? 'is-active' : ''}`}
-                aria-pressed={entryForm.kind === kind}
-                onClick={() => updateEntryForm({ kind })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {employees.length === 0 && !data.isLoading ? (
-          <EmptyState>Önce aşağıdan personel ekleyin.</EmptyState>
-        ) : (
-          <div className="form-grid">
-            <label className="field">
-              <span className="field__label">Personel *</span>
-              <select value={entryForm.employeeId} onChange={(e) => updateEntryForm({ employeeId: e.target.value })} required>
-                <option value="">— Seçin —</option>
-                {entryEmployeeOptions.map((employee) => (
-                  <option key={employee.id} value={employee.id}>{employee.full_name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">Tarih</span>
-              <input type="date" value={entryForm.date} onChange={(e) => updateEntryForm({ date: e.target.value })} required />
-            </label>
-            <label className="field">
-              <span className="field__label">Tutar</span>
-              <MoneyInput value={entryForm.amountInput} onChange={(amountInput) => updateEntryForm({ amountInput })} required />
-            </label>
-            <label className="field">
-              <span className="field__label">Ödeme yöntemi</span>
-              <select value={entryForm.paymentMethod} onChange={(e) => updateEntryForm({ paymentMethod: e.target.value })}>
-                {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field form-grid__wide">
-              <span className="field__label">Not</span>
-              <input
-                type="text"
-                value={entryForm.note}
-                onChange={(e) => updateEntryForm({ note: e.target.value })}
-                placeholder={entryForm.kind === 'advance' ? 'Örn: Kira için avans' : `Örn: ${periodTitle} maaşı`}
-              />
-            </label>
-            <div className="field form-grid__submit">
-              <button className="btn btn--primary btn--block" disabled={!isEntryValid || isSaving}>
-                {isSaving ? 'Kaydediliyor…' : entryForm.id ? 'Güncelle' : `${ENTRY_KIND_LABELS[entryForm.kind]} kaydet`}
-              </button>
-              {entryForm.id && (
+      {isEditable ? (
+        <form className="card card--form" onSubmit={handleEntrySubmit}>
+          <div className="card__header card__header--wrap">
+            <h3>{entryForm.id ? 'Kaydı düzenle' : 'Avans / maaş ödemesi gir'}</h3>
+            <div className="segmented" role="group" aria-label="Kayıt türü">
+              {Object.entries(ENTRY_KIND_LABELS).map(([kind, label]) => (
                 <button
                   type="button"
-                  className="btn btn--ghost btn--block"
-                  onClick={() => setEntryForm(createEmptyEntryForm(defaultEntryDate(range)))}
+                  key={kind}
+                  className={`segmented__option ${entryForm.kind === kind ? 'is-active' : ''}`}
+                  aria-pressed={entryForm.kind === kind}
+                  onClick={() => updateEntryForm({ kind })}
                 >
-                  Vazgeç
+                  {label}
                 </button>
+              ))}
+            </div>
+          </div>
+
+          {employees.length === 0 && !data.isLoading ? (
+            <EmptyState>Önce aşağıdan personel ekleyin.</EmptyState>
+          ) : (
+            <div className="form-grid">
+              <label className="field">
+                <span className="field__label">Personel *</span>
+                <select value={entryForm.employeeId} onChange={(e) => updateEntryForm({ employeeId: e.target.value })} required>
+                  <option value="">— Seçin —</option>
+                  {entryEmployeeOptions.map((employee) => (
+                    <option key={employee.id} value={employee.id}>{employee.full_name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field__label">Tarih</span>
+                <input type="date" value={entryForm.date} onChange={(e) => updateEntryForm({ date: e.target.value })} required />
+              </label>
+              <label className="field">
+                <span className="field__label">Tutar</span>
+                <MoneyInput value={entryForm.amountInput} onChange={(amountInput) => updateEntryForm({ amountInput })} required />
+              </label>
+              <label className="field">
+                <span className="field__label">Ödeme yöntemi</span>
+                <select value={entryForm.paymentMethod} onChange={(e) => updateEntryForm({ paymentMethod: e.target.value })}>
+                  {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field form-grid__wide">
+                <span className="field__label">Not</span>
+                <input
+                  type="text"
+                  value={entryForm.note}
+                  onChange={(e) => updateEntryForm({ note: e.target.value })}
+                  placeholder={entryForm.kind === 'advance' ? 'Örn: Kira için avans' : `Örn: ${periodTitle} maaşı`}
+                />
+              </label>
+              <div className="field form-grid__submit">
+                <button className="btn btn--primary btn--block" disabled={!isEntryValid || isSaving}>
+                  {isSaving ? 'Kaydediliyor…' : entryForm.id ? 'Güncelle' : `${ENTRY_KIND_LABELS[entryForm.kind]} kaydet`}
+                </button>
+                {entryForm.id && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--block"
+                    onClick={() => setEntryForm(createEmptyEntryForm(defaultEntryDate(range)))}
+                  >
+                    Vazgeç
+                  </button>
+                )}
+              </div>
+              {selectedBalance && (
+                <div className="field form-grid__full text-small">
+                  <span>
+                    {selectedBalance.employee.full_name} · {periodTitle}: hakediş {formatCurrency(selectedBalance.carriedOver + selectedBalance.earned)}
+                    {selectedBalance.carriedOver !== 0 && ` (devreden ${formatCurrency(selectedBalance.carriedOver)} dahil)`},
+                    avans {formatCurrency(selectedBalance.advances)}, maaş ödemesi {formatCurrency(selectedBalance.salaryPayments)}.
+                    {balanceAfterEntry !== null && (
+                      <>
+                        {' '}Bu kayıttan sonra: <BalanceText balance={balanceAfterEntry} />
+                      </>
+                    )}
+                  </span>
+                </div>
               )}
             </div>
-            {selectedBalance && (
-              <div className="field form-grid__full text-small">
-                <span>
-                  {selectedBalance.employee.full_name} · {periodTitle}: hakediş {formatCurrency(selectedBalance.carriedOver + selectedBalance.earned)}
-                  {selectedBalance.carriedOver !== 0 && ` (devreden ${formatCurrency(selectedBalance.carriedOver)} dahil)`},
-                  avans {formatCurrency(selectedBalance.advances)}, maaş ödemesi {formatCurrency(selectedBalance.salaryPayments)}.
-                  {balanceAfterEntry !== null && (
-                    <>
-                      {' '}Bu kayıttan sonra: <BalanceText balance={balanceAfterEntry} />
-                    </>
-                  )}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-        {feedback && <Alert variant={feedback.variant}>{feedback.message}</Alert>}
-      </form>
+          )}
+          {feedback && <Alert variant={feedback.variant}>{feedback.message}</Alert>}
+        </form>
+      ) : (
+        <ReadOnlyNotice />
+      )}
 
       {data.data && (
         <div className="stat-grid">
@@ -517,8 +524,12 @@ export default function EmployeesPage() {
                     <td data-label="Maaş ödemesi" className="text-end">{formatCurrency(row.salaryPayments)}</td>
                     <td data-label="Ay sonu" className="text-end"><BalanceText balance={row.balance} /></td>
                     <td className="row-actions">
-                      {row.balance > 0 && (
-                        <button type="button" className="btn btn--primary btn--sm" onClick={() => payRemaining(row)}>Kalanı öde</button>
+                      {isEditable && (
+                        <>
+                          {row.balance > 0 && (
+                            <button type="button" className="btn btn--primary btn--sm" onClick={() => payRemaining(row)}>Kalanı öde</button>
+                          )}
+                        </>
                       )}
                     </td>
                   </tr>
@@ -559,8 +570,12 @@ export default function EmployeesPage() {
                     <td data-label="Not" className="text-muted">{entry.note}</td>
                     <td data-label="Tutar" className="text-end text-strong">{formatCurrency(entry.amount)}</td>
                     <td className="row-actions">
-                      <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditingEntry(entry)}>Düzenle</button>
-                      <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDeleteEntry(entry)}>Sil</button>
+                      {isEditable && (
+                        <>
+                          <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditingEntry(entry)}>Düzenle</button>
+                          <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDeleteEntry(entry)}>Sil</button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -573,7 +588,7 @@ export default function EmployeesPage() {
       <section className="card">
         <div className="card__header">
           <h3>Personel</h3>
-          {!employeeForm && (
+          {isEditable && !employeeForm && (
             <button
               type="button"
               className="btn btn--sm"
@@ -686,8 +701,12 @@ export default function EmployeesPage() {
                         {formatCurrency(salaryForMonth(salaries, employee.id, period.year, period.month))}
                       </td>
                       <td className="row-actions">
-                        <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditingEmployee(employee)}>Düzenle</button>
-                        <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDeleteEmployee(employee)}>Sil</button>
+                        {isEditable && (
+                          <>
+                            <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditingEmployee(employee)}>Düzenle</button>
+                            <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDeleteEmployee(employee)}>Sil</button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );

@@ -4,7 +4,7 @@ import { createCategory, deleteCategory, listCategories } from '../lib/api';
 import { groupCategories, groupsForType } from '../lib/categories';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
-import { ErrorAlert, PageHeader } from '../components/ui';
+import { ErrorAlert, PageHeader, ReadOnlyNotice } from '../components/ui';
 import PasswordChangeForm from '../components/settings/PasswordChangeForm';
 import UserManager from '../components/settings/UserManager';
 
@@ -24,6 +24,8 @@ export default function SettingsPage() {
 }
 
 function CategorySettings() {
+  const { canEdit } = useAccess();
+  const isEditable = canEdit('categories');
   const { data, error, reload } = useAsync(listCategories, []);
   const categories = data || [];
 
@@ -33,16 +35,23 @@ function CategorySettings() {
       <p className="text-muted">
         Gelir ve gider kategorileri ana grup → alt kalem şeklindedir. Gider kategorileri ödemelerde de kullanılır.
       </p>
+      {!isEditable && <ReadOnlyNotice />}
       <ErrorAlert error={error} />
       <div className="layout-grid layout-grid--top">
-        <CategoryManager type="income" title="Gelir kategorileri" categories={categories} onChange={reload} />
-        <CategoryManager type="expense" title="Gider / Ödeme kategorileri" categories={categories} onChange={reload} />
+        <CategoryManager type="income" title="Gelir kategorileri" categories={categories} onChange={reload} isEditable={isEditable} />
+        <CategoryManager
+          type="expense"
+          title="Gider / Ödeme kategorileri"
+          categories={categories}
+          onChange={reload}
+          isEditable={isEditable}
+        />
       </div>
     </>
   );
 }
 
-function CategoryManager({ type, title, categories, onChange }) {
+function CategoryManager({ type, title, categories, onChange, isEditable }) {
   const groups = groupCategories(categories, type);
   const groupNameOptions = [...new Set([...groupsForType(type), ...groups.map((group) => group.groupName)])];
   const [name, setName] = useState('');
@@ -77,27 +86,29 @@ function CategoryManager({ type, title, categories, onChange }) {
   return (
     <section className="card">
       <h3>{title}</h3>
-      <form className="inline-form" onSubmit={handleCreate}>
-        <input
-          type="text"
-          list={groupListId}
-          value={groupName}
-          onChange={(e) => setGroupName(e.target.value)}
-          placeholder="Ana grup"
-          aria-label="Ana grup"
-        />
-        <datalist id={groupListId}>
-          {groupNameOptions.map((option) => <option key={option} value={option} />)}
-        </datalist>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Yeni alt kalem adı"
-          aria-label="Alt kalem adı"
-        />
-        <button className="btn btn--primary"><Plus size={16} />Ekle</button>
-      </form>
+      {isEditable && (
+        <form className="inline-form" onSubmit={handleCreate}>
+          <input
+            type="text"
+            list={groupListId}
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+            placeholder="Ana grup"
+            aria-label="Ana grup"
+          />
+          <datalist id={groupListId}>
+            {groupNameOptions.map((option) => <option key={option} value={option} />)}
+          </datalist>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Yeni alt kalem adı"
+            aria-label="Alt kalem adı"
+          />
+          <button className="btn btn--primary"><Plus size={16} />Ekle</button>
+        </form>
+      )}
       <ErrorAlert error={error} />
 
       {groups.map((group) => (
@@ -109,14 +120,16 @@ function CategoryManager({ type, title, categories, onChange }) {
             {group.categories.map((category) => (
               <li key={category.id} className="chip">
                 {category.name}
-                <button
-                  type="button"
-                  className="chip__remove"
-                  onClick={() => handleDelete(category)}
-                  aria-label={`${category.name} sil`}
-                >
-                  <X size={14} />
-                </button>
+                {isEditable && (
+                  <button
+                    type="button"
+                    className="chip__remove"
+                    onClick={() => handleDelete(category)}
+                    aria-label={`${category.name} sil`}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </li>
             ))}
           </ul>

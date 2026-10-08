@@ -370,8 +370,7 @@ input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var
 .month-picker select { width: auto; }
 
 .inline-form { display: flex; gap: 8px; margin-bottom: 12px; }
-.checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 16px; }
-.checkbox-grid .checkbox, .checkbox--plain { margin-left: 0; color: var(--color-text); }
+.checkbox--plain { margin-left: 0; color: var(--color-text); }
 .checkbox input:disabled + span { color: var(--color-text-muted); }
 .user-form {
   display: grid;
@@ -383,6 +382,9 @@ input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var
   background: var(--color-surface-muted);
 }
 .user-form h4 { margin: 0; }
+.page-access-list { display: grid; gap: 6px; max-width: 560px; }
+.page-access-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.segmented--sm .segmented__option { padding: 4px 10px; font-size: 12.5px; }
 .user-form__options { display: flex; flex-wrap: wrap; gap: 8px 24px; }
 .input-with-button { display: flex; gap: 8px; }
 .input-with-button input { flex: 1; min-width: 0; }

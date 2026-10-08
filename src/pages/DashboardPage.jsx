@@ -21,7 +21,7 @@ export default function DashboardPage() {
   const today = todayISO();
   const now = new Date();
   const currentMonth = monthRange(now.getFullYear(), now.getMonth() + 1);
-  const { canAccess } = useAccess();
+  const { canAccess, canEdit } = useAccess();
   const monthTitle = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState(null);
@@ -161,11 +161,11 @@ export default function DashboardPage() {
         description={`Bugün ${formatDate(today)}`}
         actions={
           <>
-            {canAccess('daily-register') && (
+            {canEdit('daily-register') && (
               <Link className="btn btn--primary" to={ROUTES.dailyRegister}><Plus size={16} />Günlük kasa</Link>
             )}
-            {canAccess('payments') && <Link className="btn" to={ROUTES.payments}><Plus size={16} />Yapılan ödeme</Link>}
-            {canAccess('planned-payments') && (
+            {canEdit('payments') && <Link className="btn" to={ROUTES.payments}><Plus size={16} />Yapılan ödeme</Link>}
+            {canEdit('planned-payments') && (
               <Link className="btn" to={ROUTES.plannedPayments}><Plus size={16} />Yapılacak ödeme</Link>
             )}
             <button type="button" className="btn" onClick={exportToExcel} disabled={!data || isExporting}>
@@ -183,7 +183,7 @@ export default function DashboardPage() {
           {data.isTodayRegisterMissing && (
             <Alert variant="warning">
               Bugünün kasası henüz girilmedi.{' '}
-              {canAccess('daily-register') && <Link to={ROUTES.dailyRegister}>Şimdi gir →</Link>}
+              {canEdit('daily-register') && <Link to={ROUTES.dailyRegister}>Şimdi gir →</Link>}
             </Alert>
           )}
           {data.plannedSummary.overdue.count > 0 && (

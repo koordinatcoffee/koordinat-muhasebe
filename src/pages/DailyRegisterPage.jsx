@@ -10,7 +10,10 @@ import { groupCategories, NON_REGISTER_INCOME_GROUPS } from '../lib/categories';
 import { summarize } from '../lib/summary';
 import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
-import { Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, toUserMessage } from '../components/ui';
+import { useAccess } from '../hooks/useAccess';
+import {
+  Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, toUserMessage,
+} from '../components/ui';
 
 const createEmptyForm = (date) => ({ date, cash: '', card: '', salesBreakdown: {}, note: '' });
 
@@ -22,6 +25,8 @@ const hasBreakdown = (register) => Object.keys(register?.sales_breakdown || {}).
 const weekdayOf = (isoDate) => new Date(`${isoDate}T00:00:00`).toLocaleDateString('tr-TR', { weekday: 'long' });
 
 export default function DailyRegisterPage() {
+  const { canEdit } = useAccess();
+  const isEditable = canEdit('daily-register');
   const now = new Date();
   const [period, setPeriod] = useState({ year: now.getFullYear(), month: now.getMonth() + 1 });
   const [form, setForm] = useState(() => createEmptyForm(todayISO()));
@@ -203,92 +208,96 @@ export default function DailyRegisterPage() {
         }
       />
 
-      <form className="card card--form" onSubmit={handleSubmit}>
-        <div className="card__header">
-          <h3>{existingRegister ? 'Kasa kaydını güncelle' : 'Yeni kasa kaydı'}</h3>
-          {existingRegister && <span className="badge badge--info">Bu tarih için kayıt var — güncellenecek</span>}
-        </div>
-
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Tarih</span>
-            <input type="date" value={form.date} onChange={(e) => updateForm({ date: e.target.value })} required />
-          </label>
-          <label className="field">
-            <span className="field__label">Nakit</span>
-            <MoneyInput value={form.cash} onChange={(cashInput) => updateForm({ cash: cashInput })} autoFocus />
-          </label>
-          <label className="field">
-            <span className="field__label">Kredi Kartı</span>
-            <MoneyInput value={form.card} onChange={(cardInput) => updateForm({ card: cardInput })} />
-          </label>
-          <div className="field">
-            <span className="field__label">Toplam</span>
-            <div className="total-display">{formatCurrency(total)}</div>
+      {isEditable ? (
+        <form className="card card--form" onSubmit={handleSubmit}>
+          <div className="card__header">
+            <h3>{existingRegister ? 'Kasa kaydını güncelle' : 'Yeni kasa kaydı'}</h3>
+            {existingRegister && <span className="badge badge--info">Bu tarih için kayıt var — güncellenecek</span>}
           </div>
-          <label className="field form-grid__wide">
-            <span className="field__label">Not (isteğe bağlı)</span>
-            <input type="text" value={form.note} onChange={(e) => updateForm({ note: e.target.value })} placeholder="Örn: Hafta sonu yoğunluk" />
-          </label>
-          <div className="field form-grid__submit">
-            <button className="btn btn--primary btn--block" disabled={!isValid || isSaving}>
-              {isSaving ? 'Kaydediliyor…' : existingRegister ? 'Güncelle' : 'Kaydet'}
+
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Tarih</span>
+              <input type="date" value={form.date} onChange={(e) => updateForm({ date: e.target.value })} required />
+            </label>
+            <label className="field">
+              <span className="field__label">Nakit</span>
+              <MoneyInput value={form.cash} onChange={(cashInput) => updateForm({ cash: cashInput })} autoFocus />
+            </label>
+            <label className="field">
+              <span className="field__label">Kredi Kartı</span>
+              <MoneyInput value={form.card} onChange={(cardInput) => updateForm({ card: cardInput })} />
+            </label>
+            <div className="field">
+              <span className="field__label">Toplam</span>
+              <div className="total-display">{formatCurrency(total)}</div>
+            </div>
+            <label className="field form-grid__wide">
+              <span className="field__label">Not (isteğe bağlı)</span>
+              <input type="text" value={form.note} onChange={(e) => updateForm({ note: e.target.value })} placeholder="Örn: Hafta sonu yoğunluk" />
+            </label>
+            <div className="field form-grid__submit">
+              <button className="btn btn--primary btn--block" disabled={!isValid || isSaving}>
+                {isSaving ? 'Kaydediliyor…' : existingRegister ? 'Güncelle' : 'Kaydet'}
+              </button>
+            </div>
+          </div>
+
+          <div className="sales-breakdown">
+            <button
+              type="button"
+              className="sales-breakdown__toggle"
+              onClick={() => setIsBreakdownOpen((open) => !open)}
+              aria-expanded={isBreakdownOpen}
+            >
+              {isBreakdownOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+              <span>
+                Satış dağılımı — ürün grubuna göre <span className="text-muted">(isteğe bağlı)</span>
+              </span>
             </button>
-          </div>
-        </div>
 
-        <div className="sales-breakdown">
-          <button
-            type="button"
-            className="sales-breakdown__toggle"
-            onClick={() => setIsBreakdownOpen((open) => !open)}
-            aria-expanded={isBreakdownOpen}
-          >
-            {isBreakdownOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-            <span>
-              Satış dağılımı — ürün grubuna göre <span className="text-muted">(isteğe bağlı)</span>
-            </span>
-          </button>
-
-          {isBreakdownOpen && (
-            <>
-              <p className="text-muted text-small">
-                POS / adisyon raporundaki ürün grubu tutarlarını girerseniz raporlarda "ne sattık" dökümü çıkar.
-                Dağıtılmayan kısım "Kasa Satışı (dağıtılmamış)" olarak kalır. Toplam, kasa toplamını geçemez.
-              </p>
-              <ErrorAlert error={categories.error} />
-              {salesGroups.map((group) => (
-                <div key={group.groupName} className="sales-breakdown__group">
-                  <div className="group-title">{group.groupName}</div>
-                  <div className="sales-breakdown__grid">
-                    {group.categories.map((category) => (
-                      <label key={category.id} className="field">
-                        <span className="field__label">{category.name}</span>
-                        <MoneyInput
-                          value={form.salesBreakdown[category.name] ?? ''}
-                          onChange={(amountInput) =>
-                            updateForm({ salesBreakdown: { ...form.salesBreakdown, [category.name]: amountInput } })
-                          }
-                        />
-                      </label>
-                    ))}
+            {isBreakdownOpen && (
+              <>
+                <p className="text-muted text-small">
+                  POS / adisyon raporundaki ürün grubu tutarlarını girerseniz raporlarda "ne sattık" dökümü çıkar.
+                  Dağıtılmayan kısım "Kasa Satışı (dağıtılmamış)" olarak kalır. Toplam, kasa toplamını geçemez.
+                </p>
+                <ErrorAlert error={categories.error} />
+                {salesGroups.map((group) => (
+                  <div key={group.groupName} className="sales-breakdown__group">
+                    <div className="group-title">{group.groupName}</div>
+                    <div className="sales-breakdown__grid">
+                      {group.categories.map((category) => (
+                        <label key={category.id} className="field">
+                          <span className="field__label">{category.name}</span>
+                          <MoneyInput
+                            value={form.salesBreakdown[category.name] ?? ''}
+                            onChange={(amountInput) =>
+                              updateForm({ salesBreakdown: { ...form.salesBreakdown, [category.name]: amountInput } })
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
                   </div>
+                ))}
+                <div className={`sales-breakdown__summary ${isOverAllocated ? 'is-over' : ''}`}>
+                  <span>Dağıtılan: <b>{formatCurrency(allocatedTotal)}</b></span>
+                  {isOverAllocated ? (
+                    <span>Kasa toplamını <b>{formatCurrency(-unallocated)}</b> aşıyor</span>
+                  ) : (
+                    <span>Dağıtılmamış: <b>{formatCurrency(unallocated)}</b></span>
+                  )}
                 </div>
-              ))}
-              <div className={`sales-breakdown__summary ${isOverAllocated ? 'is-over' : ''}`}>
-                <span>Dağıtılan: <b>{formatCurrency(allocatedTotal)}</b></span>
-                {isOverAllocated ? (
-                  <span>Kasa toplamını <b>{formatCurrency(-unallocated)}</b> aşıyor</span>
-                ) : (
-                  <span>Dağıtılmamış: <b>{formatCurrency(unallocated)}</b></span>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+              </>
+            )}
+          </div>
 
-        {feedback && <Alert variant={feedback.variant}>{feedback.message}</Alert>}
-      </form>
+          {feedback && <Alert variant={feedback.variant}>{feedback.message}</Alert>}
+        </form>
+      ) : (
+        <ReadOnlyNotice />
+      )}
 
       <section className="card">
         <div className="card__header card__header--wrap">
@@ -325,8 +334,12 @@ export default function DailyRegisterPage() {
                     <td data-label="Toplam" className="text-end text-strong">{formatCurrency(register.total)}</td>
                     <td data-label="Not" className="text-muted">{register.note}</td>
                     <td className="row-actions">
-                      <button type="button" className="btn btn--ghost btn--sm" onClick={() => selectDateForEditing(register.date)}>Düzenle</button>
-                      <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(register)}>Sil</button>
+                      {isEditable && (
+                        <>
+                          <button type="button" className="btn btn--ghost btn--sm" onClick={() => selectDateForEditing(register.date)}>Düzenle</button>
+                          <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(register)}>Sil</button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

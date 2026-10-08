@@ -9,6 +9,23 @@ import { Alert, EmptyState, ErrorAlert, toUserMessage } from '../ui';
 import { MIN_PASSWORD_LENGTH } from './PasswordChangeForm';
 
 const PAGE_LABELS = Object.fromEntries(PAGE_PERMISSIONS.map((page) => [page.key, page.label]));
+
+/** Access level per page: none, view only, or view + add / change / delete */
+const ACCESS_LEVELS = [
+  { value: 'none', label: 'Yok' },
+  { value: 'view', label: 'Görüntüle' },
+  { value: 'edit', label: 'Düzenle' },
+];
+
+/** allowed_pages + editable_pages → { pageKey: 'view' | 'edit' } (pages without access are left out) */
+function toPageAccess(allowedPages, editablePages) {
+  return Object.fromEntries(
+    allowedPages.map((key) => [key, editablePages.includes(key) ? 'edit' : 'view']),
+  );
+}
+
+const pagesWithAccess = (pageAccess, levels) =>
+  Object.keys(pageAccess).filter((key) => levels.includes(pageAccess[key]));
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PASSWORD_CHARACTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
 
@@ -19,7 +36,7 @@ const createEmptyForm = () => ({
   password: '',
   isAdmin: false,
   isActive: true,
-  allowedPages: ['dashboard'],
+  pageAccess: { dashboard: 'view' },
 });
 
 const toForm = (appUser) => ({
@@ -29,7 +46,7 @@ const toForm = (appUser) => ({
   password: '',
   isAdmin: appUser.is_admin,
   isActive: appUser.is_active,
-  allowedPages: appUser.allowed_pages,
+  pageAccess: toPageAccess(appUser.allowed_pages, appUser.editable_pages ?? appUser.allowed_pages),
 });
 
 function generatePassword(length = 12) {
@@ -55,18 +72,23 @@ export default function UserManager() {
   const passwordError =
     form.password && form.password.length < MIN_PASSWORD_LENGTH ? `En az ${MIN_PASSWORD_LENGTH} karakter olmalı.` : null;
   const emailError = form.email && !EMAIL_PATTERN.test(form.email.trim()) ? 'Geçerli bir e-posta girin.' : null;
-  const hasNoPages = !form.isAdmin && form.allowedPages.length === 0;
+  const hasNoPages = !form.isAdmin && pagesWithAccess(form.pageAccess, ['view', 'edit']).length === 0;
   const isValid = isEditing
     ? !passwordError && !hasNoPages
     : form.email && !emailError && form.password && !passwordError && !hasNoPages;
 
-  function togglePage(pageKey) {
-    updateForm({
-      allowedPages: form.allowedPages.includes(pageKey)
-        ? form.allowedPages.filter((key) => key !== pageKey)
-        : [...form.allowedPages, pageKey],
-    });
+  function setPageAccess(pageKey, level) {
+    const pageAccess = { ...form.pageAccess };
+    if (level === 'none') delete pageAccess[pageKey];
+    else pageAccess[pageKey] = level;
+    updateForm({ pageAccess });
   }
+
+  /** Form → the allowed / editable page lists the API expects */
+  const toAccessLists = (values) => ({
+    allowedPages: pagesWithAccess(values.pageAccess, ['view', 'edit']),
+    editablePages: pagesWithAccess(values.pageAccess, ['edit']),
+  });
 
   function startEditing(appUser) {
     setForm(toForm(appUser));
@@ -80,10 +102,10 @@ export default function UserManager() {
     setFeedback(null);
     try {
       if (isEditing) {
-        await updateAppUser(form);
+        await updateAppUser({ ...form, ...toAccessLists(form) });
         if (form.password) await setAppUserPassword(form.userId, form.password);
       } else {
-        await createAppUser({ ...form, email: form.email.trim() });
+        await createAppUser({ ...form, ...toAccessLists(form), email: form.email.trim() });
       }
       const passwordNote = form.password ? ` Şifre: ${form.password} — kullanıcıya iletin.` : '';
       setFeedback({
@@ -105,7 +127,8 @@ export default function UserManager() {
     if (!window.confirm(`${appUser.email} ${action} mı?${consequence}`)) return;
     setFeedback(null);
     try {
-      await updateAppUser({ ...toForm(appUser), isActive: !appUser.is_active });
+      const values = toForm(appUser);
+      await updateAppUser({ ...values, ...toAccessLists(values), isActive: !appUser.is_active });
       if (form.userId === appUser.user_id) setForm(createEmptyForm());
       users.reload();
     } catch (error) {
@@ -181,22 +204,39 @@ export default function UserManager() {
         </div>
 
         <div className="field">
-          <span className="field__label">Erişebileceği sayfalar</span>
-          <div className="checkbox-grid">
-            {PAGE_PERMISSIONS.map((page) => (
-              <label key={page.key} className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={form.isAdmin || form.allowedPages.includes(page.key)}
-                  disabled={form.isAdmin}
-                  onChange={() => togglePage(page.key)}
-                />
-                <span>{page.label}</span>
-              </label>
-            ))}
-          </div>
-          {hasNoPages && <span className="field__error">En az bir sayfa seçin.</span>}
-          <span className="text-muted text-small">Ayarlar sayfası herkese açıktır (kendi şifresini değiştirmek için).</span>
+          <span className="field__label">Sayfa yetkileri</span>
+          {form.isAdmin ? (
+            <span className="text-small">Yönetici tüm sayfaları görür ve düzenler.</span>
+          ) : (
+            <div className="page-access-list">
+              {PAGE_PERMISSIONS.map((page) => {
+                const current = form.pageAccess[page.key] || 'none';
+                return (
+                  <div key={page.key} className="page-access-row">
+                    <span>{page.label}</span>
+                    <div className="segmented segmented--sm" role="group" aria-label={`${page.label} yetkisi`}>
+                      {ACCESS_LEVELS.filter((level) => !(page.viewOnly && level.value === 'edit')).map((level) => (
+                        <button
+                          key={level.value}
+                          type="button"
+                          className={`segmented__option ${current === level.value ? 'is-active' : ''}`}
+                          aria-pressed={current === level.value}
+                          onClick={() => setPageAccess(page.key, level.value)}
+                        >
+                          {level.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {hasNoPages && <span className="field__error">En az bir sayfaya erişim verin.</span>}
+          <span className="text-muted text-small">
+            Görüntüle: sayfayı açar ve kayıtları görür, ekleyemez / değiştiremez / silemez. Düzenle: tüm işlemler.
+            Ayarlar sayfası herkese açıktır (kendi şifresini değiştirmek için).
+          </span>
         </div>
 
         <div className="toolbar">
@@ -244,7 +284,12 @@ export default function UserManager() {
                   <td data-label="Sayfalar" className="text-small">
                     {appUser.is_admin
                       ? 'Tüm sayfalar'
-                      : appUser.allowed_pages.map((key) => PAGE_LABELS[key] || key).join(', ') || '—'}
+                      : appUser.allowed_pages
+                          .map((key) => {
+                            const isEditable = (appUser.editable_pages ?? appUser.allowed_pages).includes(key);
+                            return `${PAGE_LABELS[key] || key} (${isEditable ? 'düzenle' : 'görüntüle'})`;
+                          })
+                          .join(', ') || '—'}
                   </td>
                   <td data-label="Son giriş" className="text-small text-muted">{formatDateTime(appUser.last_sign_in_at)}</td>
                   <td className="row-actions">

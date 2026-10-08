@@ -13,8 +13,9 @@ import { buildInvoiceLookup, remainingDebt } from '../lib/invoices';
 import { downloadWorkbook } from '../lib/excel';
 import { ROUTES } from '../config/navigation';
 import { useAsync } from '../hooks/useAsync';
+import { useAccess } from '../hooks/useAccess';
 import {
-  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, PageHeader, StatCard, toUserMessage,
+  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, PageHeader, ReadOnlyNotice, StatCard, toUserMessage,
 } from '../components/ui';
 import {
   contactToFormFields, CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
@@ -52,6 +53,8 @@ const toForm = (payment, contact) => ({
 });
 
 export default function PlannedPaymentsPage() {
+  const { canEdit } = useAccess();
+  const isEditable = canEdit('planned-payments');
   const today = todayISO();
   const [form, setForm] = useState(() => createEmptyForm());
   const [search, setSearch] = useState('');
@@ -273,73 +276,77 @@ export default function PlannedPaymentsPage() {
         }
       />
 
-      <form className="card card--form" onSubmit={handleSubmit}>
-        <div className="card__header">
-          <h3>{form.id ? 'Kaydı düzenle' : 'Yeni yapılacak ödeme'}</h3>
-        </div>
-
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Ödeme tarihi</span>
-            <input type="date" value={form.dueDate} onChange={(e) => updateForm({ dueDate: e.target.value })} required />
-          </label>
-          <label className="field">
-            <span className="field__label">Ödenecek tutar</span>
-            <MoneyInput value={form.amountInput} onChange={(amountInput) => updateForm({ amountInput })} autoFocus required />
-          </label>
-          <label className="field">
-            <span className="field__label">Kategori</span>
-            <CategorySelect
-              categories={lookups.data?.categories || []}
-              type="expense"
-              value={form.category}
-              onChange={(category) => updateForm({ category })}
-            />
-          </label>
-          <CounterpartyFields
-            form={form}
-            updateForm={updateForm}
-            counterparties={counterparties}
-            label="Kime ödenecek"
-            ibanError={paymentFields.ibanError}
-          />
-          <label className="field">
-            <span className="field__label">Ödeme yöntemi</span>
-            <select value={form.paymentMethod} onChange={(e) => updateForm({ paymentMethod: e.target.value })}>
-              {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </label>
-          <InvoiceFields form={form} updateForm={updateForm} />
-          <label className="field form-grid__half">
-            <span className="field__label">Açıklama</span>
-            <input
-              type="text"
-              value={form.description}
-              onChange={(e) => updateForm({ description: e.target.value })}
-              placeholder="Örn: Ekim kirası"
-            />
-          </label>
-          <InvoiceDebtHint
-            balance={invoiceBalanceOf(form.counterparty, form.invoiceNo)}
-            invoiceAmount={paymentFields.invoiceAmount}
-            amount={amount}
-          />
-          <div className="field form-grid__submit">
-            <button className="btn btn--block btn--primary" disabled={!isValid || isSaving}>
-              {isSaving ? 'Kaydediliyor…' : form.id ? 'Güncelle' : 'Kaydet'}
-            </button>
-            {form.id && (
-              <button type="button" className="btn btn--ghost btn--block" onClick={() => setForm(createEmptyForm())}>
-                Vazgeç
-              </button>
-            )}
+      {isEditable ? (
+        <form className="card card--form" onSubmit={handleSubmit}>
+          <div className="card__header">
+            <h3>{form.id ? 'Kaydı düzenle' : 'Yeni yapılacak ödeme'}</h3>
           </div>
-        </div>
 
-        {feedback && <Alert variant={feedback.variant}>{feedback.message}</Alert>}
-      </form>
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Ödeme tarihi</span>
+              <input type="date" value={form.dueDate} onChange={(e) => updateForm({ dueDate: e.target.value })} required />
+            </label>
+            <label className="field">
+              <span className="field__label">Ödenecek tutar</span>
+              <MoneyInput value={form.amountInput} onChange={(amountInput) => updateForm({ amountInput })} autoFocus required />
+            </label>
+            <label className="field">
+              <span className="field__label">Kategori</span>
+              <CategorySelect
+                categories={lookups.data?.categories || []}
+                type="expense"
+                value={form.category}
+                onChange={(category) => updateForm({ category })}
+              />
+            </label>
+            <CounterpartyFields
+              form={form}
+              updateForm={updateForm}
+              counterparties={counterparties}
+              label="Kime ödenecek"
+              ibanError={paymentFields.ibanError}
+            />
+            <label className="field">
+              <span className="field__label">Ödeme yöntemi</span>
+              <select value={form.paymentMethod} onChange={(e) => updateForm({ paymentMethod: e.target.value })}>
+                {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+            <InvoiceFields form={form} updateForm={updateForm} />
+            <label className="field form-grid__half">
+              <span className="field__label">Açıklama</span>
+              <input
+                type="text"
+                value={form.description}
+                onChange={(e) => updateForm({ description: e.target.value })}
+                placeholder="Örn: Ekim kirası"
+              />
+            </label>
+            <InvoiceDebtHint
+              balance={invoiceBalanceOf(form.counterparty, form.invoiceNo)}
+              invoiceAmount={paymentFields.invoiceAmount}
+              amount={amount}
+            />
+            <div className="field form-grid__submit">
+              <button className="btn btn--block btn--primary" disabled={!isValid || isSaving}>
+                {isSaving ? 'Kaydediliyor…' : form.id ? 'Güncelle' : 'Kaydet'}
+              </button>
+              {form.id && (
+                <button type="button" className="btn btn--ghost btn--block" onClick={() => setForm(createEmptyForm())}>
+                  Vazgeç
+                </button>
+              )}
+            </div>
+          </div>
+
+          {feedback && <Alert variant={feedback.variant}>{feedback.message}</Alert>}
+        </form>
+      ) : (
+        <ReadOnlyNotice />
+      )}
 
       <ErrorAlert error={payments.error} />
 
@@ -450,18 +457,22 @@ export default function PlannedPaymentsPage() {
                           {remaining === null ? '—' : formatCurrency(remaining)}
                         </td>
                         <td className="row-actions">
-                          <button type="button" className="btn btn--primary btn--sm" onClick={() => handlePay(payment)}>Ödendi</button>
-                          <button
-                            type="button"
-                            className={`btn btn--sm btn--unpaid ${payment.marked_unpaid_at ? 'is-active' : ''}`}
-                            aria-pressed={Boolean(payment.marked_unpaid_at)}
-                            title={payment.marked_unpaid_at ? 'İşareti kaldırmak için tıklayın' : 'Ödenmedi olarak işaretle'}
-                            onClick={() => toggleUnpaid(payment)}
-                          >
-                            Ödenmedi
-                          </button>
-                          <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(payment)}>Düzenle</button>
-                          <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(payment)}>Sil</button>
+                          {isEditable && (
+                            <>
+                              <button type="button" className="btn btn--primary btn--sm" onClick={() => handlePay(payment)}>Ödendi</button>
+                              <button
+                                type="button"
+                                className={`btn btn--sm btn--unpaid ${payment.marked_unpaid_at ? 'is-active' : ''}`}
+                                aria-pressed={Boolean(payment.marked_unpaid_at)}
+                                title={payment.marked_unpaid_at ? 'İşareti kaldırmak için tıklayın' : 'Ödenmedi olarak işaretle'}
+                                onClick={() => toggleUnpaid(payment)}
+                              >
+                                Ödenmedi
+                              </button>
+                              <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(payment)}>Düzenle</button>
+                              <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(payment)}>Sil</button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     );

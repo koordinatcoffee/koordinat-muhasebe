@@ -4,5 +4,6 @@ export { default as EmptyState } from './EmptyState';
 export { default as MoneyInput } from './MoneyInput';
 export { default as MonthPicker } from './MonthPicker';
 export { default as PageHeader } from './PageHeader';
+export { default as ReadOnlyNotice } from './ReadOnlyNotice';
 export { default as StatCard } from './StatCard';
 export { getYearOptions } from './yearOptions';
