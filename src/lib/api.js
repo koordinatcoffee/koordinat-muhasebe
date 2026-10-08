@@ -238,7 +238,7 @@ export async function listAppUsers() {
   return unwrap(await supabase.rpc('admin_list_users'));
 }
 
-export async function createAppUser({ email, password, fullName, isAdmin, allowedPages }) {
+export async function createAppUser({ email, password, fullName, isAdmin, allowedPages, editablePages }) {
   return unwrap(
     await supabase.rpc('admin_create_user', {
       new_email: email,
@@ -246,11 +246,12 @@ export async function createAppUser({ email, password, fullName, isAdmin, allowe
       new_full_name: fullName,
       new_is_admin: isAdmin,
       new_allowed_pages: allowedPages,
+      new_editable_pages: editablePages,
     }),
   );
 }
 
-export async function updateAppUser({ userId, fullName, isAdmin, isActive, allowedPages }) {
+export async function updateAppUser({ userId, fullName, isAdmin, isActive, allowedPages, editablePages }) {
   unwrap(
     await supabase.rpc('admin_update_user', {
       target_user_id: userId,
@@ -258,6 +259,7 @@ export async function updateAppUser({ userId, fullName, isAdmin, isActive, allow
       new_is_admin: isAdmin,
       new_is_active: isActive,
       new_allowed_pages: allowedPages,
+      new_editable_pages: editablePages,
     }),
   );
 }

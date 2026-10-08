@@ -11,16 +11,17 @@ export const ROUTES = {
 };
 
 /**
- * Pages a non-admin user can be given access to. Keys must match public.all_page_keys()
- * in supabase/schema.sql, where they also decide who may write which table.
+ * Pages a non-admin user can be given access to (view, or view + edit). Keys must match
+ * public.all_page_keys() in supabase/schema.sql, where they also decide who may write which table.
+ * viewOnly: the page has nothing to edit, so it can only be viewed.
  */
 export const PAGE_PERMISSIONS = [
-  { key: 'dashboard', label: 'Özet' },
+  { key: 'dashboard', label: 'Özet', viewOnly: true },
   { key: 'daily-register', label: 'Günlük Kasa' },
   { key: 'payments', label: 'Yapılan Ödemeler' },
   { key: 'planned-payments', label: 'Yapılacak Ödemeler' },
   { key: 'employees', label: 'Personel Avansları' },
-  { key: 'reports', label: 'Raporlar / Kâr-Zarar' },
+  { key: 'reports', label: 'Raporlar / Kâr-Zarar', viewOnly: true },
   { key: 'categories', label: 'Kategoriler (Ayarlar)' },
 ];
 

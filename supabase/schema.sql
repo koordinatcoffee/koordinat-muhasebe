@@ -229,7 +229,9 @@ create trigger employee_entries_set_updated_at before update on public.employee_
 -- app_users: who may use the panel and which pages they can open.
 --   is_admin      → every page + user management
 --   is_active     → false blocks sign-in (auth.users.banned_until) and all data access
---   allowed_pages → page keys (see PAGE_PERMISSIONS in src/config/navigation.js)
+--   allowed_pages  → page keys the user can open (see PAGE_PERMISSIONS in src/config/navigation.js)
+--   editable_pages → subset of allowed_pages where the user may also add / change / delete;
+--                    the other allowed pages are view only
 -- Users are created and changed only through the admin_* functions below.
 -- ---------------------------------------------------------------------------
 create table if not exists public.app_users (
@@ -242,6 +244,21 @@ create table if not exists public.app_users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Before view-only access existed every allowed page was editable: keep that for existing users
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'app_users' and column_name = 'editable_pages'
+  ) then
+    alter table public.app_users add column editable_pages text[];
+    update public.app_users set editable_pages = allowed_pages;
+    alter table public.app_users alter column editable_pages set default '{}';
+    alter table public.app_users alter column editable_pages set not null;
+  end if;
+end;
+$$;
 
 drop trigger if exists app_users_set_updated_at on public.app_users;
 create trigger app_users_set_updated_at before update on public.app_users
@@ -264,6 +281,7 @@ returns boolean language sql stable security definer set search_path = '' as $$
   select exists (select 1 from public.app_users where user_id = auth.uid() and is_active and is_admin);
 $$;
 
+-- has_page_access: may open (view) the page
 create or replace function public.has_page_access(page text)
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (
@@ -272,9 +290,19 @@ returns boolean language sql stable security definer set search_path = '' as $$
   );
 $$;
 
+-- can_edit_page: may add, change and delete the page's records
+create or replace function public.can_edit_page(page text)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.app_users
+    where user_id = auth.uid() and is_active
+      and (is_admin or (page = any (allowed_pages) and page = any (editable_pages)))
+  );
+$$;
+
 -- Existing accounts keep full access: on the first run every existing user becomes an admin
-insert into public.app_users (user_id, email, is_admin, is_active, allowed_pages)
-select id, coalesce(email, ''), true, true, public.all_page_keys()
+insert into public.app_users (user_id, email, is_admin, is_active, allowed_pages, editable_pages)
+select id, coalesce(email, ''), true, true, public.all_page_keys(), public.all_page_keys()
 from auth.users
 where not exists (select 1 from public.app_users);
 
@@ -285,8 +313,9 @@ returns trigger language plpgsql security definer set search_path = '' as $$
 declare
   is_first boolean := not exists (select 1 from public.app_users where is_admin and is_active);
 begin
-  insert into public.app_users (user_id, email, is_admin, is_active, allowed_pages)
+  insert into public.app_users (user_id, email, is_admin, is_active, allowed_pages, editable_pages)
   values (new.id, coalesce(new.email, ''), is_first, is_first,
+          case when is_first then public.all_page_keys() else '{}' end,
           case when is_first then public.all_page_keys() else '{}' end)
   on conflict (user_id) do nothing;
   return new;
@@ -324,17 +353,22 @@ returns text[] language sql immutable as $$
   where page = any (public.all_page_keys());
 $$;
 
+-- Signatures changed when view-only access was added; drop the old versions
+drop function if exists public.admin_list_users();
+drop function if exists public.admin_create_user(text, text, text, boolean, text[]);
+drop function if exists public.admin_update_user(uuid, text, boolean, boolean, text[]);
+
 create or replace function public.admin_list_users()
 returns table (
   user_id uuid, email text, full_name text, is_admin boolean, is_active boolean,
-  allowed_pages text[], created_at timestamptz, last_sign_in_at timestamptz
+  allowed_pages text[], editable_pages text[], created_at timestamptz, last_sign_in_at timestamptz
 )
 language plpgsql stable security definer set search_path = '' as $$
 begin
   perform public.assert_admin();
   return query
-    select u.user_id, u.email, u.full_name, u.is_admin, u.is_active, u.allowed_pages, u.created_at,
-           a.last_sign_in_at
+    select u.user_id, u.email, u.full_name, u.is_admin, u.is_active, u.allowed_pages, u.editable_pages,
+           u.created_at, a.last_sign_in_at
     from public.app_users u
     left join auth.users a on a.id = u.user_id
     order by u.is_admin desc, u.is_active desc, lower(u.email);
@@ -342,7 +376,8 @@ end;
 $$;
 
 create or replace function public.admin_create_user(
-  new_email text, new_password text, new_full_name text, new_is_admin boolean, new_allowed_pages text[]
+  new_email text, new_password text, new_full_name text, new_is_admin boolean, new_allowed_pages text[],
+  new_editable_pages text[]
 )
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare
@@ -378,19 +413,21 @@ begin
     'email', now(), now(), now()
   );
 
-  insert into public.app_users (user_id, email, full_name, is_admin, is_active, allowed_pages)
+  insert into public.app_users (user_id, email, full_name, is_admin, is_active, allowed_pages, editable_pages)
   values (new_id, normalized_email, nullif(trim(new_full_name), ''), new_is_admin, true,
-          public.clean_page_keys(new_allowed_pages))
+          public.clean_page_keys(new_allowed_pages),
+          public.clean_page_keys(array(select unnest(new_allowed_pages) intersect select unnest(new_editable_pages))))
   on conflict (user_id) do update
     set full_name = excluded.full_name, is_admin = excluded.is_admin, is_active = true,
-        allowed_pages = excluded.allowed_pages;
+        allowed_pages = excluded.allowed_pages, editable_pages = excluded.editable_pages;
 
   return new_id;
 end;
 $$;
 
 create or replace function public.admin_update_user(
-  target_user_id uuid, new_full_name text, new_is_admin boolean, new_is_active boolean, new_allowed_pages text[]
+  target_user_id uuid, new_full_name text, new_is_admin boolean, new_is_active boolean, new_allowed_pages text[],
+  new_editable_pages text[]
 )
 returns void language plpgsql security definer set search_path = '' as $$
 begin
@@ -403,7 +440,8 @@ begin
   set full_name = nullif(trim(new_full_name), ''),
       is_admin = new_is_admin,
       is_active = new_is_active,
-      allowed_pages = public.clean_page_keys(new_allowed_pages)
+      allowed_pages = public.clean_page_keys(new_allowed_pages),
+      editable_pages = public.clean_page_keys(array(select unnest(new_allowed_pages) intersect select unnest(new_editable_pages)))
   where user_id = target_user_id;
   if not found then
     raise exception 'Kullanıcı bulunamadı.';
@@ -436,13 +474,13 @@ $$;
 
 -- Only signed-in users may call these; each function checks the caller's rights itself
 revoke execute on function
-  public.admin_list_users(), public.admin_create_user(text, text, text, boolean, text[]),
-  public.admin_update_user(uuid, text, boolean, boolean, text[]), public.admin_set_user_password(uuid, text),
+  public.admin_list_users(), public.admin_create_user(text, text, text, boolean, text[], text[]),
+  public.admin_update_user(uuid, text, boolean, boolean, text[], text[]), public.admin_set_user_password(uuid, text),
   public.handle_new_auth_user()
 from public, anon;
 grant execute on function
-  public.admin_list_users(), public.admin_create_user(text, text, text, boolean, text[]),
-  public.admin_update_user(uuid, text, boolean, boolean, text[]), public.admin_set_user_password(uuid, text)
+  public.admin_list_users(), public.admin_create_user(text, text, text, boolean, text[], text[]),
+  public.admin_update_user(uuid, text, boolean, boolean, text[], text[]), public.admin_set_user_password(uuid, text)
 to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -457,8 +495,8 @@ declare
   planned public.planned_payments;
   payment public.transactions;
 begin
-  if not public.has_page_access('planned-payments') then
-    raise exception 'Bu işlem için "Yapılacak Ödemeler" yetkisi gerekir.';
+  if not public.can_edit_page('planned-payments') then
+    raise exception 'Bu işlem için "Yapılacak Ödemeler" düzenleme yetkisi gerekir.';
   end if;
 
   select * into planned from public.planned_payments where id = planned_id for update;
@@ -618,7 +656,7 @@ revoke execute on function public.delete_paid_transaction(), public.delete_unuse
 -- Row level security
 --   read  → any active user (the dashboard and reports combine all tables);
 --           staff data only with access to the staff page
---   write → users with access to the page where that data is entered
+--   write → users with edit access to the page where that data is entered
 -- ---------------------------------------------------------------------------
 alter table public.app_users enable row level security;
 drop policy if exists "own_row_or_admin_read" on public.app_users;
@@ -631,15 +669,15 @@ declare
 begin
   for rule in
     select * from (values
-      ('categories', 'public.is_active_user()', $c$public.has_page_access('categories')$c$),
-      ('daily_registers', 'public.is_active_user()', $c$public.has_page_access('daily-register')$c$),
-      ('transactions', 'public.is_active_user()', $c$public.has_page_access('payments')$c$),
-      ('planned_payments', 'public.is_active_user()', $c$public.has_page_access('planned-payments')$c$),
+      ('categories', 'public.is_active_user()', $c$public.can_edit_page('categories')$c$),
+      ('daily_registers', 'public.is_active_user()', $c$public.can_edit_page('daily-register')$c$),
+      ('transactions', 'public.is_active_user()', $c$public.can_edit_page('payments')$c$),
+      ('planned_payments', 'public.is_active_user()', $c$public.can_edit_page('planned-payments')$c$),
       ('counterparties', 'public.is_active_user()',
-       $c$public.has_page_access('payments') or public.has_page_access('planned-payments')$c$),
-      ('employees', $c$public.has_page_access('employees')$c$, $c$public.has_page_access('employees')$c$),
-      ('employee_salaries', $c$public.has_page_access('employees')$c$, $c$public.has_page_access('employees')$c$),
-      ('employee_entries', $c$public.has_page_access('employees')$c$, $c$public.has_page_access('employees')$c$)
+       $c$public.can_edit_page('payments') or public.can_edit_page('planned-payments')$c$),
+      ('employees', $c$public.has_page_access('employees')$c$, $c$public.can_edit_page('employees')$c$),
+      ('employee_salaries', $c$public.has_page_access('employees')$c$, $c$public.can_edit_page('employees')$c$),
+      ('employee_entries', $c$public.has_page_access('employees')$c$, $c$public.can_edit_page('employees')$c$)
     ) as rules (table_name, read_check, write_check)
   loop
     execute format('alter table public.%I enable row level security', rule.table_name);

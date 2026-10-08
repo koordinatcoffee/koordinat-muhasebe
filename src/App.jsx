@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
 import { getMyProfile } from './lib/api';
 import { NAVIGATION_ITEMS, ROUTES } from './config/navigation';
-import { AccessContext, buildCanAccess, useAccess } from './hooks/useAccess';
+import { AccessContext, buildCanAccess, buildCanEdit, useAccess } from './hooks/useAccess';
 import { useAsync } from './hooks/useAsync';
 import AppLayout from './components/layout/AppLayout';
 import { ErrorAlert } from './components/ui';
@@ -53,7 +53,13 @@ export default function App() {
 function SignedInApp({ user }) {
   const profile = useAsync(() => getMyProfile(user.id), [user.id]);
   const access = useMemo(
-    () => profile.data && { user, profile: profile.data, canAccess: buildCanAccess(profile.data) },
+    () =>
+      profile.data && {
+        user,
+        profile: profile.data,
+        canAccess: buildCanAccess(profile.data),
+        canEdit: buildCanEdit(profile.data),
+      },
     [user, profile.data],
   );
 
