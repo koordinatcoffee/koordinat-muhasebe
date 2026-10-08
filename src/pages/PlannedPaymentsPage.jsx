@@ -152,6 +152,7 @@ export default function PlannedPaymentsPage() {
       await deletePlannedPayment(payment.id);
       if (form.id === payment.id) setForm(createEmptyForm());
       payments.reload();
+      lookups.reload();
     } catch (error) {
       setFeedback({ variant: 'error', message: toUserMessage(error) });
     }

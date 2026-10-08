@@ -139,9 +139,7 @@ export default function ReportsPage() {
             { label: 'Kasa · Kredi Kartı', amount: summary.registerCard },
             { label: 'Diğer gelirler', amount: summary.otherIncome },
             { label: 'TOPLAM GELİR', amount: summary.totalIncome, _style: 'group' },
-            { label: 'Giderler', amount: summary.expenses },
-            { label: 'Yapılan ödemeler', amount: summary.payments },
-            { label: 'TOPLAM GİDER', amount: summary.totalOutflow, _style: 'group' },
+            { label: 'TOPLAM GİDER (yapılan ödemeler)', amount: summary.totalOutflow, _style: 'group' },
             { label: 'Kâr marjı', amount: summary.profitMargin, ...percentRow },
             { label: 'Gider / Gelir oranı', amount: summary.outflowRatio, ...percentRow },
           ],
@@ -221,8 +219,7 @@ export default function ReportsPage() {
             { header: 'Kasa (nakit + kart)', key: 'registerTotal', type: 'currency', width: 18 },
             { header: 'Diğer gelir', key: 'otherIncome', type: 'currency' },
             { header: 'Toplam gelir', key: 'totalIncome', type: 'currency', width: 18 },
-            { header: 'Gider', key: 'expenses', type: 'currency' },
-            { header: 'Ödeme', key: 'payments', type: 'currency' },
+            { header: 'Gider (ödemeler)', key: 'payments', type: 'currency', width: 18 },
             { header: 'Net', key: 'net', type: 'currency', width: 18 },
             { header: 'Marj', key: 'profitMargin', type: 'percent' },
           ],
@@ -236,7 +233,6 @@ export default function ReportsPage() {
             registerTotal: summary.registerTotal,
             otherIncome: summary.otherIncome,
             totalIncome: summary.totalIncome,
-            expenses: summary.expenses,
             payments: summary.payments,
             net: summary.net,
             profitMargin: summary.profitMargin,
@@ -370,7 +366,7 @@ export default function ReportsPage() {
               label="Toplam Gider"
               value={summary.totalOutflow}
               tone="negative"
-              hint={`Gider ${formatCurrency(summary.expenses)} + Ödeme ${formatCurrency(summary.payments)}`}
+              hint={`Yapılan ödemeler · ${summary.paymentsByCounterparty.reduce((count, row) => count + row.count, 0)} kayıt`}
             />
             <StatCard
               label={summary.net >= 0 ? 'Net Kâr' : 'Net Zarar'}
@@ -494,8 +490,7 @@ export default function ReportsPage() {
                       <th className="text-end">Kasa (Nakit+Kart)</th>
                       <th className="text-end">Diğer Gelir</th>
                       <th className="text-end">Toplam Gelir</th>
-                      <th className="text-end">Gider</th>
-                      <th className="text-end">Ödeme</th>
+                      <th className="text-end">Gider (ödemeler)</th>
                       <th className="text-end">Net</th>
                       <th className="text-end">Marj</th>
                     </tr>
@@ -507,7 +502,6 @@ export default function ReportsPage() {
                         <td className="text-end">{formatCurrency(row.registerTotal)}</td>
                         <td className="text-end">{formatCurrency(row.otherIncome)}</td>
                         <td className="text-end text-positive">{formatCurrency(row.totalIncome)}</td>
-                        <td className="text-end">{formatCurrency(row.expenses)}</td>
                         <td className="text-end">{formatCurrency(row.payments)}</td>
                         <td className={`text-end text-strong ${row.net >= 0 ? 'text-positive' : 'text-negative'}`}>{formatCurrency(row.net)}</td>
                         <td className="text-end text-muted">{formatPercent(row.profitMargin)}</td>
@@ -520,7 +514,6 @@ export default function ReportsPage() {
                       <td className="text-end">{formatCurrency(summary.registerTotal)}</td>
                       <td className="text-end">{formatCurrency(summary.otherIncome)}</td>
                       <td className="text-end text-positive">{formatCurrency(summary.totalIncome)}</td>
-                      <td className="text-end">{formatCurrency(summary.expenses)}</td>
                       <td className="text-end">{formatCurrency(summary.payments)}</td>
                       <td className={`text-end ${summary.net >= 0 ? 'text-positive' : 'text-negative'}`}>{formatCurrency(summary.net)}</td>
                       <td className="text-end">{formatPercent(summary.profitMargin)}</td>

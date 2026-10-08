@@ -116,12 +116,14 @@ export default function TransactionsPage() {
 
   async function handleDelete(transaction) {
     const summary = `${formatDate(transaction.date)} · ${transaction.counterparty || '—'} · ${formatCurrency(transaction.amount)}`;
-    if (!window.confirm(`${summary} silinsin mi?`)) return;
+    const linkedNote = '\nBu ödeme Yapılacak Ödemeler\'den geldiyse oradaki kaydı da silinir.';
+    if (!window.confirm(`${summary} silinsin mi?${linkedNote}`)) return;
     try {
       await deleteTransaction(transaction.id);
       if (form.id === transaction.id) setForm(createEmptyForm());
       transactions.reload();
       invoices.reload();
+      lookups.reload();
     } catch (error) {
       setFeedback({ variant: 'error', message: toUserMessage(error) });
     }

@@ -72,9 +72,7 @@ export default function DashboardPage() {
             { label: 'Kasa toplamı', today: day.registerTotal, month: month.registerTotal },
             { label: 'Diğer gelirler', today: day.otherIncome, month: month.otherIncome },
             { label: 'TOPLAM GELİR', today: day.totalIncome, month: month.totalIncome, _style: 'group' },
-            { label: 'Giderler', today: day.expenses, month: month.expenses },
-            { label: 'Yapılan ödemeler', today: day.payments, month: month.payments },
-            { label: 'TOPLAM GİDER', today: day.totalOutflow, month: month.totalOutflow, _style: 'group' },
+            { label: 'TOPLAM GİDER (yapılan ödemeler)', today: day.totalOutflow, month: month.totalOutflow, _style: 'group' },
             { label: 'Kâr marjı', today: day.profitMargin, month: month.profitMargin, ...percentRow },
           ],
           totals: { label: 'NET (Gelir − Gider)', today: day.net, month: month.net },
@@ -201,7 +199,7 @@ export default function DashboardPage() {
             <StatCard label="Kasa · Nakit" value={data.todaySummary.registerCash} />
             <StatCard label="Kasa · Kredi Kartı" value={data.todaySummary.registerCard} />
             <StatCard label="Toplam Gelir" value={data.todaySummary.totalIncome} tone="positive" hint="Kasa + diğer gelirler" />
-            <StatCard label="Gider + Ödeme" value={data.todaySummary.totalOutflow} tone="negative" />
+            <StatCard label="Yapılan Ödemeler" value={data.todaySummary.totalOutflow} tone="negative" />
             <StatCard
               label="Günün Neti"
               value={data.todaySummary.net}
@@ -218,7 +216,6 @@ export default function DashboardPage() {
               hint={`Nakit ${formatCurrency(data.monthSummary.registerCash)} · Kart ${formatCurrency(data.monthSummary.registerCard)}`}
             />
             <StatCard label="Toplam Gelir" value={data.monthSummary.totalIncome} tone="positive" />
-            <StatCard label="Giderler" value={data.monthSummary.expenses} tone="negative" />
             <StatCard label="Yapılan Ödemeler" value={data.monthSummary.payments} tone="negative" />
             <StatCard
               label={data.monthSummary.net >= 0 ? 'Aylık Kâr' : 'Aylık Zarar'}

@@ -60,7 +60,7 @@ create index if not exists transactions_type_date_idx on public.transactions (ty
 -- ---------------------------------------------------------------------------
 -- planned_payments: payments to be made (who, how much, when).
 --   transaction_id is set when the payment is made; it points to the "payment"
---   transaction created for it. Deleting that transaction makes it pending again.
+--   transaction created for it. Deleting either one deletes the other.
 -- ---------------------------------------------------------------------------
 create table if not exists public.planned_payments (
   id uuid primary key default gen_random_uuid(),
@@ -548,6 +548,70 @@ create trigger transactions_protect_employee_entries before update or delete on 
 revoke execute on function public.sync_employee_entry_transaction(), public.sync_employee_name() from public, anon;
 
 -- ---------------------------------------------------------------------------
+-- Deleting a record deletes everything derived from it
+--   made payment deleted    → the planned payment it paid is deleted (FK cascade)
+--   planned payment deleted → the payment made for it is deleted
+--   last use of a name gone → its saved IBAN / phone (counterparties) is deleted
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'planned_payments_transaction_id_fkey' and confdeltype <> 'c'
+  ) then
+    alter table public.planned_payments drop constraint planned_payments_transaction_id_fkey;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'planned_payments_transaction_id_fkey') then
+    alter table public.planned_payments
+      add constraint planned_payments_transaction_id_fkey
+      foreign key (transaction_id) references public.transactions (id) on delete cascade;
+  end if;
+end;
+$$;
+
+create or replace function public.delete_paid_transaction()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if old.transaction_id is not null then
+    delete from public.transactions where id = old.transaction_id;
+  end if;
+  return old;
+end;
+$$;
+
+drop trigger if exists planned_payments_delete_paid_transaction on public.planned_payments;
+create trigger planned_payments_delete_paid_transaction after delete on public.planned_payments
+  for each row execute function public.delete_paid_transaction();
+
+create or replace function public.delete_unused_counterparty()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if old.counterparty is not null
+     and (tg_op = 'DELETE' or new.counterparty is distinct from old.counterparty)
+     and not exists (select 1 from public.transactions where counterparty = old.counterparty)
+     and not exists (select 1 from public.planned_payments where counterparty = old.counterparty) then
+    delete from public.counterparties where name = old.counterparty;
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists transactions_delete_unused_counterparty on public.transactions;
+create trigger transactions_delete_unused_counterparty after delete or update of counterparty on public.transactions
+  for each row execute function public.delete_unused_counterparty();
+
+drop trigger if exists planned_payments_delete_unused_counterparty on public.planned_payments;
+create trigger planned_payments_delete_unused_counterparty after delete or update of counterparty on public.planned_payments
+  for each row execute function public.delete_unused_counterparty();
+
+-- Contact cards left over from records deleted before these triggers existed
+delete from public.counterparties c
+where not exists (select 1 from public.transactions t where t.counterparty = c.name)
+  and not exists (select 1 from public.planned_payments p where p.counterparty = c.name);
+
+revoke execute on function public.delete_paid_transaction(), public.delete_unused_counterparty() from public, anon;
+
+-- ---------------------------------------------------------------------------
 -- Row level security
 --   read  → any active user (the dashboard and reports combine all tables);
 --           staff data only with access to the staff page
@@ -642,6 +706,14 @@ begin
   end if;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- The income / expense ledger page was removed: old "expense" records become made
+-- payments, so they are listed (and can be edited or deleted) on Yapılan Ödemeler and
+-- the total expense always equals the made payments.
+-- ---------------------------------------------------------------------------
+-- (after the legacy migration, which may bring in old expense records)
+update public.transactions set type = 'payment' where type = 'expense';
 
 -- ---------------------------------------------------------------------------
 -- Default categories: [name, type, group_name] — array order becomes sort_order.

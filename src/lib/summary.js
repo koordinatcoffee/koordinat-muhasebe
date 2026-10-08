@@ -34,7 +34,8 @@ function rollUpByGroup(rows, groupOf) {
 /**
  * Builds a period summary from daily registers and transactions.
  *   Total income  = register (cash + card) + other income
- *   Total outflow = expenses + payments
+ *   Total outflow = made payments (the old "expense" type is moved into payments by schema.sql
+ *                   and is not counted separately, so the total always matches Yapılan Ödemeler)
  *   Net           = total income − total outflow
  * A register's sales_breakdown is added to income categories; the unallocated
  * remainder is reported as UNALLOCATED_REGISTER_SALES.
@@ -43,7 +44,6 @@ export function summarize(registers = [], transactions = [], categories = []) {
   let registerCash = 0;
   let registerCard = 0;
   let otherIncome = 0;
-  let expenses = 0;
   let payments = 0;
 
   const incomeByCategory = new Map();
@@ -88,21 +88,18 @@ export function summarize(registers = [], transactions = [], categories = []) {
       continue;
     }
 
-    if (transaction.type === 'expense') {
-      expenses += amount;
-    } else {
-      payments += amount;
-      const counterparty = transaction.counterparty || UNSPECIFIED;
-      increment(paymentTotals, counterparty, amount);
-      increment(paymentCounts, counterparty, 1);
-    }
+    if (transaction.type !== 'payment') continue;
+    payments += amount;
+    const counterparty = transaction.counterparty || UNSPECIFIED;
+    increment(paymentTotals, counterparty, amount);
+    increment(paymentCounts, counterparty, 1);
     method.outflow += amount;
     increment(expenseByCategory, category, amount);
   }
 
   const registerTotal = registerCash + registerCard;
   const totalIncome = registerTotal + otherIncome;
-  const totalOutflow = expenses + payments;
+  const totalOutflow = payments;
   const net = totalIncome - totalOutflow;
 
   const groupLookup = buildGroupLookup(categories);
@@ -121,7 +118,6 @@ export function summarize(registers = [], transactions = [], categories = []) {
     registerTotal: roundAmount(registerTotal),
     otherIncome: roundAmount(otherIncome),
     totalIncome: roundAmount(totalIncome),
-    expenses: roundAmount(expenses),
     payments: roundAmount(payments),
     totalOutflow: roundAmount(totalOutflow),
     net: roundAmount(net),

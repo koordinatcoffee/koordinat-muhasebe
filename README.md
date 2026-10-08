@@ -9,7 +9,7 @@ React + Vite ile web'de geliştirilir, Supabase'de veri tutar ve Electron ile Wi
 |---|---|
 | **Günlük Kasa** | Her gün için **nakit** + **kredi kartı** satış toplamı. Toplam otomatik hesaplanır. Bir güne tek kayıt girilir; aynı tarih seçilirse kayıt güncellenir. İsteğe bağlı olarak tutar ürün gruplarına (sıcak kahve, soğuk içecek, tatlı…) dağıtılabilir. |
 | **Yapılan Ödemeler** | Kime, ne kadar, hangi yöntemle ödendi (tedarikçi, kira, maaş, vergi…). Firma/kişinin **IBAN** ve **telefonu**, **fatura no** ve **fatura tutarı**; her faturanın **kalan borcu** (kısmi ödeme). "Kime ne ödedik" ve "Açık faturalar" özetleri. |
-| **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek (IBAN, telefon, fatura bilgileriyle). Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; o ödeme silinirse tekrar bekleyene döner. |
+| **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek (IBAN, telefon, fatura bilgileriyle). Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; **Ödenmedi** ile işaretlenir (bekleyen listesinde kalır). Ödeme silinirse bağlı yapılacak ödeme kaydı da silinir. |
 | **Personel Avansları** | Personel listesi ve aylık net maaş (maaş geçmişiyle), verilen **avanslar** ve **maaş ödemeleri**. Her ay için devreden + hakediş − avans − ödeme hesabıyla **ay sonu kim alacaklı** (personel mi, biz mi). Avans ve maaş ödemeleri Yapılan Ödemeler'e (Avans / Net Maaşlar kategorisi) otomatik eklenir; oradan değil bu sayfadan düzenlenir. |
 | **Raporlar** | Aylık / yıllık / tarih aralığı kâr-zarar, kâr marjı, gider dağılımı, kime ne ödendiği, ödeme yöntemine göre giriş-çıkış, aylık veya günlük döküm, tüm hareketler. **Yazdır / PDF** ve **Excel'e aktar**. |
 | **Ayarlar** | Şifre değiştirme (herkes), kullanıcı yönetimi (yönetici), gelir ve gider kategorileri (ana grup → alt kalem). |
@@ -31,13 +31,14 @@ Raporlarda gelir ve giderler bu gruplara göre dökülür. Ayrıca kafe işletme
 
 ```
 Toplam Gelir = Kasa (nakit + kredi kartı) + Diğer gelirler
-Toplam Gider = Giderler + Yapılan ödemeler
+Toplam Gider = Yapılan ödemeler
 Net Kâr/Zarar = Toplam Gelir − Toplam Gider
 Kâr Marjı    = Net / Toplam Gelir
 ```
 
 > Yapılacak ödemeler, **Ödendi** denene kadar kâr-zarara girmez.
-> Eski Gelir - Gider Defteri kayıtları (`income` / `expense`) raporlarda hesaba katılmaya devam eder.
+> Eski Gelir - Gider Defterinin gider kayıtları (`expense`) `schema.sql` ile Yapılan Ödemeler'e taşınır; eski gelir kayıtları (`income`) "Diğer gelirler" olarak sayılır.
+> Bir kayıt silinince ondan türeyen kayıtlar da silinir (ödeme ↔ yapılacak ödeme, personel avansı → ödeme, kullanılmayan IBAN / telefon kartı).
 
 ### Kullanıcılar ve yetkiler
 
