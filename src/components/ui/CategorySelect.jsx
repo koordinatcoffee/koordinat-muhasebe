@@ -105,7 +105,11 @@ export default function CategorySelect({ categories, type, value, onChange, id }
           aria-label="Kategoriyi temizle"
           // mousedown keeps focus out of the input so the list does not open
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onChange('')}
+          onClick={(event) => {
+            // The field sits inside a <label>: cancel the label's click forwarding, which would reopen the list
+            event.preventDefault();
+            onChange('');
+          }}
         >
           <X size={14} />
         </button>
@@ -114,7 +118,16 @@ export default function CategorySelect({ categories, type, value, onChange, id }
       )}
 
       {isOpen && (
-        <ul id={listId} ref={listRef} role="listbox" className="combobox__list" onMouseDown={(event) => event.preventDefault()}>
+        <ul
+          id={listId}
+          ref={listRef}
+          role="listbox"
+          className="combobox__list"
+          // mousedown: keep focus in the input; click: stop the surrounding <label> from
+          // forwarding the click to the input, which would reopen the list right after selecting
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => event.preventDefault()}
+        >
           {options.length === 0 && <li className="combobox__empty">"{query}" ile eşleşen kategori yok</li>}
           {options.map((option, index) => (
             <li key={option.key} role="presentation">
