@@ -17,7 +17,7 @@ import {
   Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, PageHeader, StatCard, toUserMessage,
 } from '../components/ui';
 import {
-  CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
+  contactToFormFields, CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
 } from '../components/payments/PaymentFields';
 
 /** Table tabs: every pending payment, those not marked, those marked "Ödenmedi" */
@@ -43,8 +43,7 @@ const toForm = (payment, contact) => ({
   dueDate: payment.due_date,
   category: payment.category || '',
   counterparty: payment.counterparty,
-  iban: contact?.iban ? formatIban(contact.iban) : '',
-  phone: contact?.phone || '',
+  ...contactToFormFields(contact),
   paymentMethod: payment.payment_method,
   amountInput: toAmountInput(payment.amount),
   description: payment.description || '',
@@ -202,6 +201,7 @@ export default function PlannedPaymentsPage() {
             { header: 'Durum', key: 'status', width: 14 },
             { header: 'Ödenmedi', key: 'unpaid', width: 12 },
             { header: 'Kime ödenecek', key: 'counterparty', width: 26 },
+            { header: 'Alıcı adı', key: 'recipientName', width: 26 },
             { header: 'IBAN', key: 'iban', width: 34 },
             { header: 'Telefon', key: 'phone', width: 16 },
             { header: 'Kategori', key: 'category', width: 24 },
@@ -220,6 +220,7 @@ export default function PlannedPaymentsPage() {
               status: status.label,
               unpaid: payment.marked_unpaid_at ? `Evet (${formatDate(payment.marked_unpaid_at)})` : '',
               counterparty: payment.counterparty,
+              recipientName: contact?.recipient_name,
               iban: contact?.iban ? formatIban(contact.iban) : '',
               phone: contact?.phone,
               category: payment.category,
@@ -431,6 +432,7 @@ export default function PlannedPaymentsPage() {
                         </td>
                         <td data-label="Kime">
                           {payment.counterparty}
+                          {contact?.recipient_name && <div className="text-small">Alıcı: {contact.recipient_name}</div>}
                           {contact?.phone && <div className="text-muted text-small">{contact.phone}</div>}
                           {contact?.iban && <div className="text-muted text-small mono">{formatIban(contact.iban)}</div>}
                         </td>

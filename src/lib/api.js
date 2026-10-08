@@ -118,11 +118,11 @@ export const listInvoiceBalances = () =>
 
 /**
  * Previously used suppliers / people with their contact details, for autocomplete:
- * [{ name, iban, phone }] sorted by name
+ * [{ name, recipient_name, iban, phone }] sorted by name
  */
 export async function listCounterparties() {
   const [details, paidNames, plannedNames] = await Promise.all([
-    supabase.from('counterparties').select('name, iban, phone').limit(PAGE_SIZE).then(unwrap),
+    supabase.from('counterparties').select('name, recipient_name, iban, phone').limit(PAGE_SIZE).then(unwrap),
     supabase
       .from('transactions')
       .select('counterparty')
@@ -134,19 +134,24 @@ export async function listCounterparties() {
   ]);
   const byName = new Map(details.map((row) => [row.name, row]));
   for (const { counterparty } of [...paidNames, ...plannedNames]) {
-    if (!byName.has(counterparty)) byName.set(counterparty, { name: counterparty, iban: null, phone: null });
+    if (!byName.has(counterparty)) byName.set(counterparty, { name: counterparty, recipient_name: null, iban: null, phone: null });
   }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 }
 
-/** Stores the IBAN / phone of a counterparty (matched by name) */
-async function saveCounterpartyDetails({ counterparty, iban, phone }) {
+/** Stores the recipient name / IBAN / phone of a counterparty (matched by name) */
+async function saveCounterpartyDetails({ counterparty, recipientName, iban, phone }) {
   const name = counterparty?.trim();
   if (!name) return;
-  const row = { name, iban: normalizeIban(iban) || null, phone: phone?.trim() || null };
+  const row = {
+    name,
+    recipient_name: recipientName?.trim() || null,
+    iban: normalizeIban(iban) || null,
+    phone: phone?.trim() || null,
+  };
   const { data: existing } = await supabase.from('counterparties').select('id').eq('name', name).maybeSingle();
   // Do not create empty contact cards; existing cards are kept in sync (also when cleared)
-  if (!existing && !row.iban && !row.phone) return;
+  if (!existing && !row.recipient_name && !row.iban && !row.phone) return;
   unwrap(await supabase.from('counterparties').upsert(row, { onConflict: 'name' }));
 }
 

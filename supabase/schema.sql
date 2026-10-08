@@ -133,6 +133,9 @@ create table if not exists public.counterparties (
   updated_at timestamptz not null default now()
 );
 
+-- recipient_name: account holder of the IBAN (alıcı adı), needed for bank transfers
+alter table public.counterparties add column if not exists recipient_name text;
+
 -- ---------------------------------------------------------------------------
 -- Staff, salaries and advances
 --   employees         → staff; salary is earned from start_date until end_date

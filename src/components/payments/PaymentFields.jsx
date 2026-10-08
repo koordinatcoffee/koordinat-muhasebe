@@ -2,7 +2,21 @@ import { formatCurrency, formatIban, isValidIban, parseAmount, roundAmount } fro
 import { MoneyInput } from '../ui';
 
 /** Empty values of the counterparty and invoice fields in a payment form */
-export const EMPTY_PAYMENT_FIELDS = { counterparty: '', iban: '', phone: '', invoiceNo: '', invoiceAmountInput: '' };
+export const EMPTY_PAYMENT_FIELDS = {
+  counterparty: '',
+  recipientName: '',
+  iban: '',
+  phone: '',
+  invoiceNo: '',
+  invoiceAmountInput: '',
+};
+
+/** Saved contact details of a counterparty as form values */
+export const contactToFormFields = (contact) => ({
+  recipientName: contact?.recipient_name || '',
+  iban: contact?.iban ? formatIban(contact.iban) : '',
+  phone: contact?.phone || '',
+});
 
 /** Validates the counterparty and invoice fields: { invoiceAmount, ibanError, isValid } */
 export function validatePaymentFields(form) {
@@ -15,14 +29,14 @@ export function validatePaymentFields(form) {
   };
 }
 
-/** Name (with autocomplete), IBAN and phone of the person / company being paid */
+/** Name (with autocomplete), recipient name, IBAN and phone of the person / company being paid */
 export function CounterpartyFields({ form, updateForm, counterparties, label, ibanError }) {
   function handleNameChange(name) {
     const known = counterparties.find((counterparty) => counterparty.name === name.trim());
     // Picking a known name fills in its saved contact details
     updateForm(
-      known && (known.iban || known.phone)
-        ? { counterparty: name, iban: known.iban ? formatIban(known.iban) : '', phone: known.phone || '' }
+      known && (known.recipient_name || known.iban || known.phone)
+        ? { counterparty: name, ...contactToFormFields(known) }
         : { counterparty: name },
     );
   }
@@ -42,6 +56,16 @@ export function CounterpartyFields({ form, updateForm, counterparties, label, ib
         <datalist id="counterparty-options">
           {counterparties.map((counterparty) => <option key={counterparty.name} value={counterparty.name} />)}
         </datalist>
+      </label>
+      <label className="field">
+        <span className="field__label">Alıcı adı</span>
+        <input
+          type="text"
+          value={form.recipientName}
+          onChange={(e) => updateForm({ recipientName: e.target.value })}
+          placeholder="IBAN sahibinin adı / ünvanı"
+          autoComplete="off"
+        />
       </label>
       <label className="field form-grid__half">
         <span className="field__label">IBAN</span>

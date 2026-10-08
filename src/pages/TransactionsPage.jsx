@@ -14,7 +14,7 @@ import {
   Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, toUserMessage,
 } from '../components/ui';
 import {
-  CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
+  contactToFormFields, CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
 } from '../components/payments/PaymentFields';
 
 const PAYMENT_TYPES = ['payment'];
@@ -40,8 +40,7 @@ const toForm = (transaction, contact) => ({
   type: transaction.type,
   category: transaction.category || '',
   counterparty: transaction.counterparty || '',
-  iban: contact?.iban ? formatIban(contact.iban) : '',
-  phone: contact?.phone || '',
+  ...contactToFormFields(contact),
   paymentMethod: transaction.payment_method,
   amountInput: toAmountInput(transaction.amount),
   description: transaction.description || '',
@@ -178,6 +177,7 @@ export default function TransactionsPage() {
           columns: [
             { header: 'Tarih', key: 'date', type: 'date' },
             { header: 'Kime ödendi', key: 'counterparty', width: 26 },
+            { header: 'Alıcı adı', key: 'recipientName', width: 26 },
             { header: 'IBAN', key: 'iban', width: 34 },
             { header: 'Telefon', key: 'phone', width: 16 },
             { header: 'Kategori', key: 'category', width: 24 },
@@ -193,6 +193,7 @@ export default function TransactionsPage() {
             return {
               date: transaction.date,
               counterparty: transaction.counterparty,
+              recipientName: contact?.recipient_name,
               iban: contact?.iban ? formatIban(contact.iban) : '',
               phone: contact?.phone,
               category: transaction.category,
@@ -213,6 +214,7 @@ export default function TransactionsPage() {
           subtitle,
           columns: [
             { header: 'Kime ödendi', key: 'name', width: 30 },
+            { header: 'Alıcı adı', key: 'recipientName', width: 26 },
             { header: 'IBAN', key: 'iban', width: 34 },
             { header: 'Telefon', key: 'phone', width: 16 },
             { header: 'Ödeme adedi', key: 'count', type: 'number', width: 12 },
@@ -222,6 +224,7 @@ export default function TransactionsPage() {
             const contact = contactOf(group.name);
             return {
               ...group,
+              recipientName: contact?.recipient_name,
               iban: contact?.iban ? formatIban(contact.iban) : '',
               phone: contact?.phone,
             };
@@ -385,6 +388,7 @@ export default function TransactionsPage() {
                         <td data-label="Tarih">{formatDate(transaction.date)}</td>
                         <td data-label="Kime ödendi">
                           {transaction.counterparty || '—'}
+                          {contact?.recipient_name && <div className="text-small">Alıcı: {contact.recipient_name}</div>}
                           {contact?.phone && <div className="text-muted text-small">{contact.phone}</div>}
                           {contact?.iban && <div className="text-muted text-small mono">{formatIban(contact.iban)}</div>}
                         </td>
