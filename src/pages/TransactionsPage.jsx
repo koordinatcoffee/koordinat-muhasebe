@@ -12,7 +12,8 @@ import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
 import {
-  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, toUserMessage,
+  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, SkeletonTable,
+  toUserMessage,
 } from '../components/ui';
 import {
   contactToFormFields, CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
@@ -367,7 +368,7 @@ export default function TransactionsPage() {
 
           <ErrorAlert error={transactions.error} />
           {transactions.isLoading ? (
-            <p className="text-muted">Yükleniyor…</p>
+            <SkeletonTable rows={6} columns={7} />
           ) : visibleTransactions.length === 0 ? (
             <EmptyState>Bu dönem için kayıt yok.</EmptyState>
           ) : (
@@ -448,7 +449,9 @@ export default function TransactionsPage() {
         <div>
           <section className="card">
             <h3>Kime ne ödedik?</h3>
-            {paymentsByCounterparty.length === 0 ? (
+            {transactions.isLoading ? (
+              <SkeletonTable rows={4} columns={2} />
+            ) : paymentsByCounterparty.length === 0 ? (
               <EmptyState>Kayıt yok.</EmptyState>
             ) : (
               <table className="data-table data-table--compact">
@@ -470,7 +473,9 @@ export default function TransactionsPage() {
           <section className="card">
             <h3>Açık faturalar</h3>
             <ErrorAlert error={invoices.error} />
-            {openInvoices.length === 0 ? (
+            {invoices.isLoading ? (
+              <SkeletonTable rows={3} columns={2} />
+            ) : openInvoices.length === 0 ? (
               <EmptyState>Kalan borcu olan fatura yok.</EmptyState>
             ) : (
               <table className="data-table data-table--compact">

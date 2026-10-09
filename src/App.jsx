@@ -6,7 +6,7 @@ import { NAVIGATION_ITEMS, ROUTES } from './config/navigation';
 import { AccessContext, buildCanAccess, buildCanEdit, useAccess } from './hooks/useAccess';
 import { useAsync } from './hooks/useAsync';
 import AppLayout from './components/layout/AppLayout';
-import { ErrorAlert } from './components/ui';
+import { ErrorAlert, PageSkeleton, Skeleton } from './components/ui';
 import LoginPage from './pages/LoginPage';
 
 // Pages are code-split so the first screen loads only what it needs
@@ -44,7 +44,7 @@ export default function App() {
     );
   }
 
-  if (session === SESSION_LOADING) return <div className="center-screen text-muted">Yükleniyor…</div>;
+  if (session === SESSION_LOADING) return <BootSkeleton />;
   if (!session) return <LoginPage />;
   // Keyed by user so switching accounts reloads the access rights
   return <SignedInApp key={session.user.id} user={session.user} />;
@@ -63,7 +63,7 @@ function SignedInApp({ user }) {
     [user, profile.data],
   );
 
-  if (profile.isLoading) return <div className="center-screen text-muted">Yükleniyor…</div>;
+  if (profile.isLoading) return <BootSkeleton />;
   if (profile.error || !profile.data?.is_active) {
     return (
       <div className="center-screen">
@@ -106,4 +106,21 @@ function RequirePage({ page, children }) {
   if (canAccess(page)) return children;
   const fallback = NAVIGATION_ITEMS.find((item) => canAccess(item.permission));
   return <Navigate to={fallback.path} replace />;
+}
+
+/** Shown while the session and access rights load: the app shell's outline with shimmering content */
+function BootSkeleton() {
+  return (
+    <div className="app-shell" aria-busy="true">
+      <aside className="sidebar boot-skeleton__sidebar" aria-hidden="true">
+        <Skeleton width={140} height={36} />
+        <div className="boot-skeleton__nav">
+          {Array.from({ length: 7 }, (_, index) => <Skeleton key={index} width={`${60 + ((index * 17) % 35)}%`} height={18} />)}
+        </div>
+      </aside>
+      <main className="main-content">
+        <PageSkeleton />
+      </main>
+    </div>
+  );
 }

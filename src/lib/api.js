@@ -19,29 +19,54 @@ function unwrap({ data, error }) {
   return data;
 }
 
+// ---------------------------------------------------------------------- Branches
+
+export async function listBranches() {
+  return unwrap(await supabase.from('branches').select('*').order('sort_order').order('created_at'));
+}
+
+export async function createBranch(name) {
+  return unwrap(await supabase.from('branches').insert({ name: name.trim() }).select().single());
+}
+
+export async function renameBranch(id, name) {
+  unwrap(await supabase.from('branches').update({ name: name.trim() }).eq('id', id));
+}
+
+export async function deleteBranch(id) {
+  unwrap(await supabase.from('branches').delete().eq('id', id));
+}
+
 // --------------------------------------------------------------- Daily registers
 
-export const listDailyRegisters = (startDate, endDate) =>
-  fetchAllPages(() =>
-    supabase
+/** Registers of every branch, or of one branch when branchId is given */
+export const listDailyRegisters = (startDate, endDate, branchId) =>
+  fetchAllPages(() => {
+    let query = supabase
       .from('daily_registers')
       .select('*')
       .gte('date', startDate)
       .lte('date', endDate)
-      .order('date', { ascending: false }),
-  );
+      .order('date', { ascending: false })
+      .order('branch_id');
+    if (branchId) query = query.eq('branch_id', branchId);
+    return query;
+  });
 
-export async function getDailyRegister(date) {
-  return unwrap(await supabase.from('daily_registers').select('*').eq('date', date).maybeSingle());
+export async function getDailyRegister(branchId, date) {
+  return unwrap(
+    await supabase.from('daily_registers').select('*').eq('branch_id', branchId).eq('date', date).maybeSingle(),
+  );
 }
 
-export async function saveDailyRegister({ date, cash, card, salesBreakdown, note }) {
+/** One register per branch and day: saving the same branch and date again updates it */
+export async function saveDailyRegister({ branchId, date, cash, card, salesBreakdown, note }) {
   return unwrap(
     await supabase
       .from('daily_registers')
       .upsert(
-        { date, cash, card, sales_breakdown: salesBreakdown || {}, note: note || null },
-        { onConflict: 'date' },
+        { branch_id: branchId, date, cash, card, sales_breakdown: salesBreakdown || {}, note: note || null },
+        { onConflict: 'branch_id,date' },
       )
       .select()
       .single(),

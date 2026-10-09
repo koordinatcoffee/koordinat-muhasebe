@@ -15,7 +15,8 @@ import { ROUTES } from '../config/navigation';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
 import {
-  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, PageHeader, ReadOnlyNotice, StatCard, toUserMessage,
+  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, PageHeader, ReadOnlyNotice, SkeletonStatGrid, SkeletonTable,
+  StatCard, toUserMessage,
 } from '../components/ui';
 import {
   contactToFormFields, CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
@@ -350,6 +351,7 @@ export default function PlannedPaymentsPage() {
 
       <ErrorAlert error={payments.error} />
 
+      {payments.isLoading && <SkeletonStatGrid count={4} />}
       {payments.data && (
         <div className="stat-grid">
           <StatCard
@@ -396,7 +398,7 @@ export default function PlannedPaymentsPage() {
           </div>
 
           {payments.isLoading ? (
-            <p className="text-muted">Yükleniyor…</p>
+            <SkeletonTable rows={6} columns={7} />
           ) : visiblePayments.length === 0 ? (
             <EmptyState>{statusFilter === 'unpaid' ? 'Ödenmedi işaretli ödeme yok.' : 'Bekleyen ödeme yok.'}</EmptyState>
           ) : (
@@ -485,7 +487,9 @@ export default function PlannedPaymentsPage() {
 
         <section className="card">
           <h3>Ne zaman ne kadar?</h3>
-          {summary.byMonth.length === 0 ? (
+          {payments.isLoading ? (
+            <SkeletonTable rows={3} columns={2} />
+          ) : summary.byMonth.length === 0 ? (
             <EmptyState>Kayıt yok.</EmptyState>
           ) : (
             <table className="data-table data-table--compact">

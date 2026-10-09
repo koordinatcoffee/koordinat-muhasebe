@@ -5,6 +5,7 @@ import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { NAVIGATION_ITEMS } from '../../config/navigation';
 import { useAccess } from '../../hooks/useAccess';
 import { supabase } from '../../lib/supabaseClient';
+import { PageSkeleton } from '../ui';
 import compactLogo from '../../assets/brand/logo-compact.png';
 
 export default function AppLayout({ user }) {
@@ -85,7 +86,7 @@ export default function AppLayout({ user }) {
             İnternet bağlantısı yok. Kayıtlar Supabase'e ulaşamaz; bağlantı gelince sayfayı yenileyin.
           </div>
         )}
-        <Suspense fallback={<p className="text-muted">Yükleniyor…</p>}>
+        <Suspense fallback={<PageSkeleton />}>
           <Outlet />
         </Suspense>
       </main>

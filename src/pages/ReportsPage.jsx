@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FileSpreadsheet, Printer } from 'lucide-react';
-import { listCategories, listDailyRegisters, listTransactions } from '../lib/api';
+import { listBranches, listCategories, listDailyRegisters, listTransactions } from '../lib/api';
 import { downloadWorkbook } from '../lib/excel';
 import {
   formatCurrency, formatDate, formatPercent, monthRange, MONTH_NAMES, PAYMENT_METHOD_LABELS, todayISO,
@@ -10,7 +10,7 @@ import { COST_RATIOS } from '../lib/categories';
 import { dailyBreakdown, monthlyBreakdown, summarize } from '../lib/summary';
 import { useAsync } from '../hooks/useAsync';
 import {
-  Alert, EmptyState, ErrorAlert, getYearOptions, PageHeader, StatCard, toUserMessage,
+  Alert, EmptyState, ErrorAlert, getYearOptions, PageHeader, SkeletonStatGrid, SkeletonTable, StatCard, toUserMessage,
 } from '../components/ui';
 import GroupedAmountTable, { shareOf } from '../components/reports/GroupedAmountTable';
 import fullLogo from '../assets/brand/logo-full.png';
@@ -29,7 +29,7 @@ const entryTypeLabel = (entry) =>
   entry.type === REGISTER_ENTRY_TYPE ? REGISTER_ENTRY_LABEL : TRANSACTION_TYPE_LABELS[entry.type];
 
 /** Register cash/card amounts as ledger-like entries so they can be listed with transactions */
-function registersToEntries(registers) {
+function registersToEntries(registers, branchNameOf) {
   return registers.flatMap((register) =>
     [
       ['cash', register.cash],
@@ -41,7 +41,7 @@ function registersToEntries(registers) {
         date: register.date,
         type: REGISTER_ENTRY_TYPE,
         category: 'Kasa Satışı',
-        counterparty: '',
+        counterparty: branchNameOf(register.branch_id),
         payment_method: paymentMethod,
         description: register.note,
         amount: Number(amount),
@@ -74,12 +74,13 @@ export default function ReportsPage() {
 
   const { data, isLoading, error } = useAsync(async () => {
     if (!isRangeValid) return null;
-    const [registers, transactions, categories] = await Promise.all([
+    const [registers, transactions, categories, branches] = await Promise.all([
       listDailyRegisters(range.start, range.end),
       listTransactions(range.start, range.end),
       listCategories(),
+      listBranches(),
     ]);
-    return { registers, transactions, categories };
+    return { registers, transactions, categories, branches };
   }, [range.start, range.end]);
 
   const summary = useMemo(
@@ -96,7 +97,21 @@ export default function ReportsPage() {
 
   const allEntries = useMemo(() => {
     if (!data) return [];
-    return [...registersToEntries(data.registers), ...data.transactions].sort((a, b) => a.date.localeCompare(b.date));
+    const branchNameOf = (id) => data.branches.find((branch) => branch.id === id)?.name || '';
+    return [...registersToEntries(data.registers, branchNameOf), ...data.transactions].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+  }, [data]);
+
+  // Register sales per branch (payments and other records are shared by all branches)
+  const branchRows = useMemo(() => {
+    if (!data) return [];
+    return data.branches.map((branch) => {
+      const registers = data.registers.filter((register) => register.branch_id === branch.id);
+      const cash = registers.reduce((sum, register) => sum + Number(register.cash), 0);
+      const card = registers.reduce((sum, register) => sum + Number(register.card), 0);
+      return { id: branch.id, name: branch.name, days: registers.length, cash, card, total: cash + card };
+    });
   }, [data]);
 
   const costRatioRows = summary
@@ -211,6 +226,28 @@ export default function ReportsPage() {
           totals: { method: 'TOPLAM', inflow: summary.totalIncome, outflow: summary.totalOutflow, net: summary.net },
         },
         {
+          name: 'Şubeler',
+          title: 'Şubelere göre kasa satışı',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Şube', key: 'name', width: 26 },
+            { header: 'Gün', key: 'days', type: 'number' },
+            { header: 'Nakit', key: 'cash', type: 'currency', width: 18 },
+            { header: 'Kredi kartı', key: 'card', type: 'currency', width: 18 },
+            { header: 'Toplam', key: 'total', type: 'currency', width: 18 },
+            { header: 'Pay', key: 'share', type: 'percent' },
+          ],
+          rows: branchRows.map((row) => ({ ...row, share: shareOf(row.total, summary.registerTotal) })),
+          totals: {
+            name: 'TÜM ŞUBELER',
+            cash: summary.registerCash,
+            card: summary.registerCard,
+            total: summary.registerTotal,
+            share: summary.registerTotal > 0 ? 100 : null,
+          },
+          note: 'Kasa satışları şube bazındadır; ödemeler ve diğer kayıtlar tüm şubeler için ortaktır.',
+        },
+        {
           name: `${breakdownUnitLabel} Bazında Döküm`,
           title: `${breakdownUnitLabel} bazında döküm`,
           subtitle: periodTitle,
@@ -247,7 +284,7 @@ export default function ReportsPage() {
             { header: 'Tarih', key: 'date', type: 'date' },
             { header: 'Tür', key: 'type', width: 10 },
             { header: 'Kategori', key: 'category', width: 28 },
-            { header: 'Firma / Kişi', key: 'counterparty', width: 26 },
+            { header: 'Firma / Kişi / Şube', key: 'counterparty', width: 26 },
             { header: 'Fatura no', key: 'invoiceNo', width: 16 },
             { header: 'Ödeme yöntemi', key: 'method', width: 14 },
             { header: 'Açıklama', key: 'description', width: 34 },
@@ -350,7 +387,16 @@ export default function ReportsPage() {
 
       <ErrorAlert error={error} />
       {exportError && <Alert variant="error">Excel dosyası oluşturulamadı: {toUserMessage(exportError)}</Alert>}
-      {isLoading && <p className="text-muted">Yükleniyor…</p>}
+      {isLoading && (
+        <div aria-busy="true">
+          <SkeletonStatGrid count={4} />
+          <SkeletonStatGrid count={4} />
+          <div className="layout-grid">
+            <section className="card"><SkeletonTable rows={6} columns={3} /></section>
+            <section className="card"><SkeletonTable rows={6} columns={3} /></section>
+          </div>
+        </div>
+      )}
 
       {summary && !isLoading && (
         <>
@@ -475,6 +521,49 @@ export default function ReportsPage() {
               </div>
               <p className="text-muted text-small">"Nakit" satırının neti, dönem içinde nakit kasaya giren ile çıkan farkını gösterir.</p>
             </section>
+
+            {branchRows.length > 1 && (
+              <section className="card">
+                <h3>Şubelere göre kasa satışı</h3>
+                <div className="table-scroll">
+                  <table className="data-table data-table--compact">
+                    <thead>
+                      <tr>
+                        <th>Şube</th>
+                        <th className="text-end">Gün</th>
+                        <th className="text-end">Nakit</th>
+                        <th className="text-end">Kredi Kartı</th>
+                        <th className="text-end">Toplam</th>
+                        <th className="text-end">Pay</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {branchRows.map((row) => (
+                        <tr key={row.id}>
+                          <td>{row.name}</td>
+                          <td className="text-end text-muted">{row.days}</td>
+                          <td className="text-end">{formatCurrency(row.cash)}</td>
+                          <td className="text-end">{formatCurrency(row.card)}</td>
+                          <td className="text-end text-strong">{formatCurrency(row.total)}</td>
+                          <td className="text-end text-muted">{formatPercent(shareOf(row.total, summary.registerTotal))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td>Tüm şubeler</td>
+                        <td />
+                        <td className="text-end">{formatCurrency(summary.registerCash)}</td>
+                        <td className="text-end">{formatCurrency(summary.registerCard)}</td>
+                        <td className="text-end">{formatCurrency(summary.registerTotal)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <p className="text-muted text-small">Ödemeler ve diğer kayıtlar tüm şubeler için ortaktır.</p>
+              </section>
+            )}
           </div>
 
           <section className="card print-page-break">

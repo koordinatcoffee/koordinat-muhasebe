@@ -5,7 +5,7 @@ import { formatDate } from '../../lib/format';
 import { PAGE_PERMISSIONS } from '../../config/navigation';
 import { useAccess } from '../../hooks/useAccess';
 import { useAsync } from '../../hooks/useAsync';
-import { Alert, EmptyState, ErrorAlert, toUserMessage } from '../ui';
+import { Alert, EmptyState, ErrorAlert, SkeletonTable, toUserMessage } from '../ui';
 import { MIN_PASSWORD_LENGTH } from './PasswordChangeForm';
 
 const PAGE_LABELS = Object.fromEntries(PAGE_PERMISSIONS.map((page) => [page.key, page.label]));
@@ -268,7 +268,7 @@ export default function UserManager() {
 
       <ErrorAlert error={users.error} />
       {users.isLoading ? (
-        <p className="text-muted">Yükleniyor…</p>
+        <SkeletonTable rows={3} columns={5} />
       ) : !users.data?.length ? (
         <EmptyState>Kullanıcı yok.</EmptyState>
       ) : (

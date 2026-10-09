@@ -7,12 +7,14 @@ React + Vite ile web'de geliştirilir, Supabase'de veri tutar ve Electron ile Wi
 
 | Sayfa | Ne girilir |
 |---|---|
-| **Günlük Kasa** | Her gün için **nakit** + **kredi kartı** satış toplamı. Toplam otomatik hesaplanır. Bir güne tek kayıt girilir; aynı tarih seçilirse kayıt güncellenir. İsteğe bağlı olarak tutar ürün gruplarına (sıcak kahve, soğuk içecek, tatlı…) dağıtılabilir. |
+| **Günlük Kasa** | **Şube seçilerek** her gün için **nakit** + **kredi kartı** satış toplamı. Her şubenin kasası ayrıdır; bir şubeye bir güne tek kayıt girilir, aynı şube ve tarih seçilirse kayıt güncellenir. İsteğe bağlı olarak tutar ürün gruplarına dağıtılabilir. Ay sonunda şubelere göre toplam. |
 | **Yapılan Ödemeler** | Kime, ne kadar, hangi yöntemle ödendi (tedarikçi, kira, maaş, vergi…). Firma/kişinin **IBAN** ve **telefonu**, **fatura no** ve **fatura tutarı**; her faturanın **kalan borcu** (kısmi ödeme). "Kime ne ödedik" ve "Açık faturalar" özetleri. |
 | **Yapılacak Ödemeler** | Ne zaman, kime, ne kadar ödenecek (IBAN, telefon, fatura bilgileriyle). Gecikmiş / önümüzdeki 7 gün / toplam bekleyen ve aylara göre döküm. **Ödendi** ile kayıt Yapılan Ödemeler'e geçer; **Ödenmedi** ile işaretlenir (bekleyen listesinde kalır). Ödeme silinirse bağlı yapılacak ödeme kaydı da silinir. |
 | **Personel Avansları** | Personel listesi ve aylık net maaş (maaş geçmişiyle), verilen **avanslar** ve **maaş ödemeleri**. Her ay için devreden + hakediş − avans − ödeme hesabıyla **ay sonu kim alacaklı** (personel mi, biz mi). Avans ve maaş ödemeleri Yapılan Ödemeler'e (Avans / Net Maaşlar kategorisi) otomatik eklenir; oradan değil bu sayfadan düzenlenir. |
 | **Raporlar** | Aylık / yıllık / tarih aralığı kâr-zarar, kâr marjı, gider dağılımı, kime ne ödendiği, ödeme yöntemine göre giriş-çıkış, aylık veya günlük döküm, tüm hareketler. **Yazdır / PDF** ve **Excel'e aktar**. |
-| **Ayarlar** | Şifre değiştirme (herkes), kullanıcı yönetimi (yönetici), gelir ve gider kategorileri (ana grup → alt kalem). |
+| **Ayarlar** | Şifre değiştirme (herkes), kullanıcı ve şube yönetimi (yönetici), gelir ve gider kategorileri (ana grup → alt kalem). |
+
+**Şubeler:** Yalnızca günlük kasa şube bazındadır. Ödemeler, yapılacak ödemeler, personel ve kategoriler tüm şubeler için ortaktır; Özet ve Raporlar tüm şubelerin toplamını gösterir (Raporlar'da ayrıca şube kırılımı vardır). Şubeler eklenmeden önce girilen kasa kayıtları ilk şubeye ("Merkez") aktarılır.
 
 Özet, Günlük Kasa, Yapılan / Yapılacak Ödemeler ve Raporlar sayfalarında **Excel'e aktar** düğmesi biçimli bir `.xlsx` dosyası indirir (her bölüm ayrı sayfa, para ve tarih biçimleri, toplam satırları, A4 yazdırma ayarı).
 
@@ -100,7 +102,8 @@ Arayüz masaüstü, tablet ve telefonda çalışır:
 | `employees` / `employee_salaries` / `employee_entries` | Personel; maaş geçmişi (`valid_from` ayından itibaren); avans (`advance`) ve maaş ödemesi (`salary_payment`) kayıtları. Her kayıt `transactions.employee_entry_id` ile bir ödeme kaydına yansıtılır. |
 | `app_users` | Panel kullanıcıları: `user_id` (auth.users), `email`, `full_name`, `is_admin`, `is_active`, `allowed_pages` (görebildiği sayfalar), `editable_pages` (düzenleyebildiği sayfalar) |
 | `categories` | `name`, `type` (`income` / `expense`), `group_name`, `sort_order` |
-| `daily_registers` | Günlük kasa: `date` (tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
+| `branches` | Şubeler: `name` (tekil), `sort_order` |
+| `daily_registers` | Günlük kasa: `branch_id`, `date` (şube + tarih tekil), `cash`, `card`, `total` (otomatik), `sales_breakdown` (jsonb), `note` |
 | `transactions` | `date`, `type` (`income` / `expense` / `payment`), `category`, `counterparty`, `payment_method` (`cash` / `card` / `bank_transfer` / `other`), `amount`, `description`, `invoice_no`, `invoice_amount` |
 | `counterparties` | Firma / kişi iletişim bilgisi: `name` (tekil), `iban`, `phone` |
 | `invoice_balances` (view) | Fatura başına `invoice_amount`, `paid_amount`, `remaining_amount`, `last_payment_date` |

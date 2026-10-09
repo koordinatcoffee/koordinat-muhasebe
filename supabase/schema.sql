@@ -19,7 +19,8 @@ create table if not exists public.categories (
 );
 
 -- ---------------------------------------------------------------------------
--- daily_registers: one row per day with cash + card sales.
+-- daily_registers: one row per branch per day with cash + card sales (branch_id and the
+-- (branch_id, date) uniqueness are added below, after the branches table).
 --   sales_breakdown: optional split by income category, e.g. {"Sıcak Kahveler": 8000}
 -- ---------------------------------------------------------------------------
 create table if not exists public.daily_registers (
@@ -33,6 +34,41 @@ create table if not exists public.daily_registers (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- ---------------------------------------------------------------------------
+-- branches: each branch keeps its own daily register; everything else (payments,
+-- planned payments, staff, categories) is shared by all branches.
+-- ---------------------------------------------------------------------------
+create table if not exists public.branches (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  sort_order integer not null default 10000,
+  created_at timestamptz not null default now()
+);
+
+-- There is always at least one branch; registers entered before branches existed belong to it
+insert into public.branches (name, sort_order)
+select 'Merkez', 10
+where not exists (select 1 from public.branches);
+
+-- One register per branch per day (it used to be one per day)
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'daily_registers' and column_name = 'branch_id'
+  ) then
+    alter table public.daily_registers
+      add column branch_id uuid references public.branches (id) on delete restrict;
+    update public.daily_registers
+    set branch_id = (select id from public.branches order by sort_order, created_at limit 1);
+    alter table public.daily_registers alter column branch_id set not null;
+    alter table public.daily_registers drop constraint if exists daily_registers_date_key;
+    alter table public.daily_registers
+      add constraint daily_registers_branch_date_key unique (branch_id, date);
+  end if;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- transactions
@@ -670,6 +706,7 @@ begin
   for rule in
     select * from (values
       ('categories', 'public.is_active_user()', $c$public.can_edit_page('categories')$c$),
+      ('branches', 'public.is_active_user()', 'public.is_admin()'),
       ('daily_registers', 'public.is_active_user()', $c$public.can_edit_page('daily-register')$c$),
       ('transactions', 'public.is_active_user()', $c$public.can_edit_page('payments')$c$),
       ('planned_payments', 'public.is_active_user()', $c$public.can_edit_page('planned-payments')$c$),
@@ -703,8 +740,9 @@ $$;
 do $$
 begin
   if to_regclass('public.kasa_gunluk') is not null then
-    insert into public.daily_registers (date, cash, card, sales_breakdown, note, created_at, updated_at)
-    select (j ->> 'tarih')::date,
+    insert into public.daily_registers (branch_id, date, cash, card, sales_breakdown, note, created_at, updated_at)
+    select (select id from public.branches order by sort_order, created_at limit 1),
+           (j ->> 'tarih')::date,
            (j ->> 'nakit')::numeric,
            (j ->> 'kredi_karti')::numeric,
            coalesce(j -> 'dagilim', '{}'::jsonb),
@@ -712,7 +750,7 @@ begin
            (j ->> 'created_at')::timestamptz,
            (j ->> 'updated_at')::timestamptz
     from (select to_jsonb(k) as j from public.kasa_gunluk k) legacy
-    on conflict (date) do nothing;
+    on conflict (branch_id, date) do nothing;
     drop table public.kasa_gunluk;
   end if;
 

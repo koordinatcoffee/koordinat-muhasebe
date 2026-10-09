@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, FileSpreadsheet } from 'lucide-react';
 import {
-  deleteDailyRegister, getDailyRegister, listCategories, listDailyRegisters, saveDailyRegister,
+  deleteDailyRegister, getDailyRegister, listBranches, listCategories, listDailyRegisters, saveDailyRegister,
 } from '../lib/api';
 import {
   formatCurrency, formatDate, monthRange, MONTH_NAMES, parseAmount, roundAmount, toAmountInput, todayISO,
@@ -11,8 +11,10 @@ import { summarize } from '../lib/summary';
 import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
+import { useSelectedBranch } from '../hooks/useSelectedBranch';
 import {
-  Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, toUserMessage,
+  Alert, BranchPicker, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, SkeletonTable,
+  toUserMessage,
 } from '../components/ui';
 
 const createEmptyForm = (date) => ({ date, cash: '', card: '', salesBreakdown: {}, note: '' });
@@ -36,19 +38,24 @@ export default function DailyRegisterPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
+  const branches = useAsync(listBranches, []);
+  const [branchId, setBranchId] = useSelectedBranch(branches.data);
+  const branchName = branches.data?.find((branch) => branch.id === branchId)?.name || '';
+
   const range = monthRange(period.year, period.month);
+  // Every branch's registers for the month: the selected branch is listed, all are summarized
   const registers = useAsync(() => listDailyRegisters(range.start, range.end), [range.start]);
   const categories = useAsync(listCategories, []);
   const salesGroups = groupCategories(categories.data || [], 'income').filter(
     (group) => !NON_REGISTER_INCOME_GROUPS.includes(group.groupName),
   );
 
-  // One register per day: selecting a date that already has a record loads it for editing
+  // One register per branch and day: picking a date (or branch) that already has a record loads it for editing
   useEffect(() => {
     let isCancelled = false;
     setExistingRegister(null);
-    if (!form.date) return undefined;
-    getDailyRegister(form.date)
+    if (!form.date || !branchId) return undefined;
+    getDailyRegister(branchId, form.date)
       .then((register) => {
         if (isCancelled) return;
         setExistingRegister(register);
@@ -69,7 +76,7 @@ export default function DailyRegisterPage() {
     return () => {
       isCancelled = true;
     };
-  }, [form.date]);
+  }, [form.date, branchId]);
 
   const updateForm = (changes) => setForm((current) => ({ ...current, ...changes }));
 
@@ -89,6 +96,7 @@ export default function DailyRegisterPage() {
   const isOverAllocated = unallocated < 0;
 
   const isValid =
+    branchId &&
     form.date && !Number.isNaN(cash) && !Number.isNaN(card) && cash >= 0 && card >= 0 && total > 0 &&
     !isBreakdownInvalid && !isOverAllocated;
 
@@ -98,9 +106,12 @@ export default function DailyRegisterPage() {
     setIsSaving(true);
     setFeedback(null);
     try {
-      const saved = await saveDailyRegister({ date: form.date, cash, card, salesBreakdown, note: form.note.trim() });
+      const saved = await saveDailyRegister({ branchId, date: form.date, cash, card, salesBreakdown, note: form.note.trim() });
       setExistingRegister(saved);
-      setFeedback({ variant: 'success', message: `${formatDate(form.date)} kasası kaydedildi: ${formatCurrency(saved.total)}` });
+      setFeedback({
+        variant: 'success',
+        message: `${branchName} · ${formatDate(form.date)} kasası kaydedildi: ${formatCurrency(saved.total)}`,
+      });
       registers.reload();
     } catch (error) {
       setFeedback({ variant: 'error', message: toUserMessage(error) });
@@ -110,10 +121,10 @@ export default function DailyRegisterPage() {
   }
 
   async function handleDelete(register) {
-    if (!window.confirm(`${formatDate(register.date)} tarihli kasa kaydı silinsin mi?`)) return;
+    if (!window.confirm(`${branchName} · ${formatDate(register.date)} tarihli kasa kaydı silinsin mi?`)) return;
     try {
       await deleteDailyRegister(register.id);
-      if (register.date === form.date) {
+      if (register.id === existingRegister?.id) {
         setExistingRegister(null);
         setForm(createEmptyForm(form.date));
       }
@@ -128,11 +139,26 @@ export default function DailyRegisterPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  const rows = registers.data || [];
+  const allRows = registers.data || [];
+  const rows = allRows.filter((register) => register.branch_id === branchId);
   const monthTotals = rows.reduce(
     (totals, register) => ({ cash: totals.cash + Number(register.cash), card: totals.card + Number(register.card) }),
     { cash: 0, card: 0 },
   );
+
+  // Month totals of every branch, in branch order
+  const branchTotals = useMemo(
+    () =>
+      (branches.data || []).map((branch) => {
+        const branchRows = allRows.filter((register) => register.branch_id === branch.id);
+        const cashTotal = branchRows.reduce((sum, register) => sum + Number(register.cash), 0);
+        const cardTotal = branchRows.reduce((sum, register) => sum + Number(register.card), 0);
+        return { id: branch.id, name: branch.name, days: branchRows.length, cash: cashTotal, card: cardTotal, total: cashTotal + cardTotal };
+      }),
+    [branches.data, allRows],
+  );
+  const allBranchesTotal = branchTotals.reduce((sum, branch) => sum + branch.total, 0);
+  const branchNameOf = (id) => branches.data?.find((branch) => branch.id === id)?.name || '—';
 
   async function exportToExcel() {
     setIsExporting(true);
@@ -145,7 +171,7 @@ export default function DailyRegisterPage() {
       await downloadWorkbook(`koordinat-gunluk-kasa-${range.start.slice(0, 7)}`, [
         {
           name: 'Günlük Kasa',
-          title: 'Günlük Kasa',
+          title: `Günlük Kasa — ${branchName}`,
           subtitle: periodTitle,
           columns: [
             { header: 'Tarih', key: 'date', type: 'date' },
@@ -174,7 +200,7 @@ export default function DailyRegisterPage() {
         },
         {
           name: 'Satış Dağılımı',
-          title: 'Satış dağılımı (ürün grubuna göre)',
+          title: `Satış dağılımı (ürün grubuna göre) — ${branchName}`,
           subtitle: periodTitle,
           columns: [
             { header: 'Grup', key: 'group', width: 30 },
@@ -187,6 +213,52 @@ export default function DailyRegisterPage() {
             ...group.items.map((item) => ({ item: item.name, amount: item.amount, share: share(item.amount) })),
           ]),
           totals: { group: 'TOPLAM', amount: monthTotal, share: monthTotal > 0 ? 100 : null },
+        },
+        {
+          name: 'Şubeler',
+          title: 'Şubelere göre kasa',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Şube', key: 'name', width: 26 },
+            { header: 'Gün', key: 'days', type: 'number' },
+            { header: 'Nakit', key: 'cash', type: 'currency', width: 18 },
+            { header: 'Kredi kartı', key: 'card', type: 'currency', width: 18 },
+            { header: 'Toplam', key: 'total', type: 'currency', width: 18 },
+            { header: 'Pay', key: 'share', type: 'percent' },
+          ],
+          rows: branchTotals.map((branch) => ({
+            ...branch,
+            share: allBranchesTotal > 0 ? (branch.total / allBranchesTotal) * 100 : null,
+          })),
+          totals: {
+            name: 'TÜM ŞUBELER',
+            cash: branchTotals.reduce((sum, branch) => sum + branch.cash, 0),
+            card: branchTotals.reduce((sum, branch) => sum + branch.card, 0),
+            total: allBranchesTotal,
+            share: allBranchesTotal > 0 ? 100 : null,
+          },
+        },
+        {
+          name: 'Tüm Şubeler Günlük',
+          title: 'Tüm şubelerin günlük kasası',
+          subtitle: periodTitle,
+          columns: [
+            { header: 'Tarih', key: 'date', type: 'date' },
+            { header: 'Şube', key: 'branch', width: 24 },
+            { header: 'Nakit', key: 'cash', type: 'currency', width: 18 },
+            { header: 'Kredi kartı', key: 'card', type: 'currency', width: 18 },
+            { header: 'Toplam', key: 'total', type: 'currency', width: 18 },
+            { header: 'Not', key: 'note', width: 34 },
+          ],
+          rows: [...allRows].reverse().map((register) => ({
+            date: register.date,
+            branch: branchNameOf(register.branch_id),
+            cash: register.cash,
+            card: register.card,
+            total: register.total,
+            note: register.note,
+          })),
+          totals: { date: `TOPLAM (${allRows.length} kayıt)`, total: allBranchesTotal, _types: { date: 'text' } },
         },
       ]);
     } catch (error) {
@@ -202,17 +274,28 @@ export default function DailyRegisterPage() {
         title="Günlük Kasa"
         description="Gün sonunda kasadaki nakit ve kredi kartı (POS / Z raporu) satış toplamlarını girin."
         actions={
-          <button type="button" className="btn" onClick={exportToExcel} disabled={!registers.data || isExporting}>
+          <button type="button" className="btn" onClick={exportToExcel} disabled={!registers.data || !branchId || isExporting}>
             <FileSpreadsheet size={16} />{isExporting ? 'Hazırlanıyor…' : "Excel'e aktar"}
           </button>
         }
       />
 
+      <ErrorAlert error={branches.error} />
+      {branches.data && branches.data.length > 1 && (
+        <div className="branch-bar">
+          <span className="field__label">Şube</span>
+          <BranchPicker branches={branches.data} value={branchId} onChange={setBranchId} />
+        </div>
+      )}
+
       {isEditable ? (
         <form className="card card--form" onSubmit={handleSubmit}>
           <div className="card__header">
-            <h3>{existingRegister ? 'Kasa kaydını güncelle' : 'Yeni kasa kaydı'}</h3>
-            {existingRegister && <span className="badge badge--info">Bu tarih için kayıt var — güncellenecek</span>}
+            <h3>
+              {existingRegister ? 'Kasa kaydını güncelle' : 'Yeni kasa kaydı'}
+              {branchName && <span className="text-muted"> · {branchName}</span>}
+            </h3>
+            {existingRegister && <span className="badge badge--info">Bu şube ve tarih için kayıt var — güncellenecek</span>}
           </div>
 
           <div className="form-grid">
@@ -301,14 +384,14 @@ export default function DailyRegisterPage() {
 
       <section className="card">
         <div className="card__header card__header--wrap">
-          <h3>Aylık kasa listesi</h3>
+          <h3>Aylık kasa listesi{branchName && <span className="text-muted"> · {branchName}</span>}</h3>
           <MonthPicker year={period.year} month={period.month} onChange={setPeriod} />
         </div>
         <ErrorAlert error={registers.error} />
-        {registers.isLoading ? (
-          <p className="text-muted">Yükleniyor…</p>
+        {registers.isLoading || branches.isLoading ? (
+          <SkeletonTable rows={6} columns={5} />
         ) : rows.length === 0 ? (
-          <EmptyState>Bu ay için kasa kaydı yok.</EmptyState>
+          <EmptyState>Bu şube için bu ay kasa kaydı yok.</EmptyState>
         ) : (
           <div className="table-scroll">
             <table className="data-table data-table--stack">
@@ -324,7 +407,7 @@ export default function DailyRegisterPage() {
               </thead>
               <tbody>
                 {rows.map((register) => (
-                  <tr key={register.id} className={register.date === form.date ? 'is-selected' : undefined}>
+                  <tr key={register.id} className={register.id === existingRegister?.id ? 'is-selected' : undefined}>
                     <td data-label="Tarih">
                       {formatDate(register.date)}
                       {hasBreakdown(register) && <span className="badge badge--info badge--tiny">dağılım</span>}
@@ -357,6 +440,51 @@ export default function DailyRegisterPage() {
           </div>
         )}
       </section>
+
+      {branchTotals.length > 1 && (
+        <section className="card">
+          <h3>Şubelere göre — {MONTH_NAMES[period.month - 1]} {period.year}</h3>
+          {registers.isLoading ? (
+            <SkeletonTable rows={branchTotals.length} columns={5} />
+          ) : (
+            <div className="table-scroll">
+              <table className="data-table data-table--stack">
+                <thead>
+                  <tr>
+                    <th>Şube</th>
+                    <th className="text-end">Gün</th>
+                    <th className="text-end">Nakit</th>
+                    <th className="text-end">Kredi Kartı</th>
+                    <th className="text-end">Toplam</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {branchTotals.map((branch) => (
+                    <tr key={branch.id} className={branch.id === branchId ? 'is-selected' : undefined}>
+                      <td data-label="Şube">
+                        <button type="button" className="link-button" onClick={() => setBranchId(branch.id)}>{branch.name}</button>
+                      </td>
+                      <td data-label="Gün" className="text-end">{branch.days}</td>
+                      <td data-label="Nakit" className="text-end">{formatCurrency(branch.cash)}</td>
+                      <td data-label="Kredi Kartı" className="text-end">{formatCurrency(branch.card)}</td>
+                      <td data-label="Toplam" className="text-end text-strong">{formatCurrency(branch.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>Tüm şubeler</td>
+                    <td />
+                    <td className="text-end">{formatCurrency(branchTotals.reduce((sum, branch) => sum + branch.cash, 0))}</td>
+                    <td className="text-end">{formatCurrency(branchTotals.reduce((sum, branch) => sum + branch.card, 0))}</td>
+                    <td className="text-end">{formatCurrency(allBranchesTotal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </>
   );
 }

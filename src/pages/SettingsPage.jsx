@@ -4,9 +4,10 @@ import { createCategory, deleteCategory, listCategories } from '../lib/api';
 import { groupCategories, groupsForType } from '../lib/categories';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
-import { ErrorAlert, PageHeader, ReadOnlyNotice } from '../components/ui';
+import { ErrorAlert, PageHeader, ReadOnlyNotice, Skeleton } from '../components/ui';
 import PasswordChangeForm from '../components/settings/PasswordChangeForm';
 import UserManager from '../components/settings/UserManager';
+import BranchManager from '../components/settings/BranchManager';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -15,9 +16,10 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Ayarlar" description="Şifre, kullanıcılar ve kategoriler." />
+      <PageHeader title="Ayarlar" description="Şifre, kullanıcılar, şubeler ve kategoriler." />
       <PasswordChangeForm />
       {profile.is_admin && <UserManager />}
+      {profile.is_admin && <BranchManager />}
       {canAccess('categories') && <CategorySettings />}
     </>
   );
@@ -26,7 +28,7 @@ export default function SettingsPage() {
 function CategorySettings() {
   const { canEdit } = useAccess();
   const isEditable = canEdit('categories');
-  const { data, error, reload } = useAsync(listCategories, []);
+  const { data, error, reload, isLoading } = useAsync(listCategories, []);
   const categories = data || [];
 
   return (
@@ -37,16 +39,29 @@ function CategorySettings() {
       </p>
       {!isEditable && <ReadOnlyNotice />}
       <ErrorAlert error={error} />
-      <div className="layout-grid layout-grid--top">
-        <CategoryManager type="income" title="Gelir kategorileri" categories={categories} onChange={reload} isEditable={isEditable} />
-        <CategoryManager
-          type="expense"
-          title="Gider / Ödeme kategorileri"
-          categories={categories}
-          onChange={reload}
-          isEditable={isEditable}
-        />
-      </div>
+      {isLoading ? (
+        <div className="layout-grid layout-grid--top">
+          {[0, 1].map((index) => (
+            <section key={index} className="card">
+              <Skeleton width={160} height={16} className="skeleton--title" />
+              <div className="skeleton-chips">
+                {Array.from({ length: 14 }, (_, chip) => <Skeleton key={chip} width={70 + ((chip * 37) % 90)} height={28} radius={999} />)}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="layout-grid layout-grid--top">
+          <CategoryManager type="income" title="Gelir kategorileri" categories={categories} onChange={reload} isEditable={isEditable} />
+          <CategoryManager
+            type="expense"
+            title="Gider / Ödeme kategorileri"
+            categories={categories}
+            onChange={reload}
+            isEditable={isEditable}
+          />
+        </div>
+      )}
     </>
   );
 }

@@ -13,7 +13,8 @@ import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
 import {
-  Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, StatCard, toUserMessage,
+  Alert, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, SkeletonStatGrid, SkeletonTable,
+  StatCard, toUserMessage,
 } from '../components/ui';
 
 const RESTRICT_VIOLATION = '23503';
@@ -479,6 +480,7 @@ export default function EmployeesPage() {
         <ReadOnlyNotice />
       )}
 
+      {data.isLoading && <SkeletonStatGrid count={4} />}
       {data.data && (
         <div className="stat-grid">
           <StatCard label="Bu ay maaş hakedişi" value={roundAmount(totals.earned)} hint={`${balances.filter((row) => row.isEmployed).length} personel`} />
@@ -491,7 +493,7 @@ export default function EmployeesPage() {
       <section className="card">
         <h3>{periodTitle} — ay sonu durumu</h3>
         {data.isLoading ? (
-          <p className="text-muted">Yükleniyor…</p>
+          <SkeletonTable rows={4} columns={7} />
         ) : balances.length === 0 ? (
           <EmptyState>Bu ay çalışan personel yok.</EmptyState>
         ) : (
@@ -546,7 +548,9 @@ export default function EmployeesPage() {
 
       <section className="card">
         <h3>{periodTitle} — avans ve maaş ödemeleri</h3>
-        {monthEntries.length === 0 ? (
+        {data.isLoading ? (
+          <SkeletonTable rows={3} columns={6} />
+        ) : monthEntries.length === 0 ? (
           <EmptyState>Bu ay kayıt yok.</EmptyState>
         ) : (
           <div className="table-scroll">
@@ -670,7 +674,9 @@ export default function EmployeesPage() {
         )}
         {employeeFeedback && <Alert variant={employeeFeedback.variant}>{employeeFeedback.message}</Alert>}
 
-        {employees.length === 0 ? (
+        {data.isLoading ? (
+          <SkeletonTable rows={3} columns={5} />
+        ) : employees.length === 0 ? (
           <EmptyState>Henüz personel eklenmedi.</EmptyState>
         ) : (
           <div className="table-scroll">

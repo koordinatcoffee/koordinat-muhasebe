@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileSpreadsheet, Plus } from 'lucide-react';
-import { listDailyRegisters, listPendingPlannedPayments, listRecentTransactions, listTransactions } from '../lib/api';
+import {
+  listBranches, listDailyRegisters, listPendingPlannedPayments, listRecentTransactions, listTransactions,
+} from '../lib/api';
 import {
   formatCurrency, formatDate, formatPercent, monthRange, MONTH_NAMES, PAYMENT_METHOD_LABELS, todayISO,
   TRANSACTION_TYPE_LABELS,
@@ -12,7 +14,9 @@ import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { ROUTES } from '../config/navigation';
 import { useAccess } from '../hooks/useAccess';
-import { Alert, EmptyState, ErrorAlert, PageHeader, StatCard, toUserMessage } from '../components/ui';
+import {
+  Alert, EmptyState, ErrorAlert, PageHeader, Skeleton, SkeletonStatGrid, SkeletonTable, StatCard, toUserMessage,
+} from '../components/ui';
 
 const RECENT_TRANSACTION_LIMIT = 8;
 const UPCOMING_PAYMENT_LIMIT = 8;
@@ -27,11 +31,12 @@ export default function DashboardPage() {
   const [exportError, setExportError] = useState(null);
 
   const { data, isLoading, error } = useAsync(async () => {
-    const [registers, transactions, recentTransactions, plannedPayments] = await Promise.all([
+    const [registers, transactions, recentTransactions, plannedPayments, branches] = await Promise.all([
       listDailyRegisters(currentMonth.start, currentMonth.end),
       listTransactions(currentMonth.start, currentMonth.end),
       listRecentTransactions(RECENT_TRANSACTION_LIMIT),
       listPendingPlannedPayments(),
+      listBranches(),
     ]);
     // Overdue and due within UPCOMING_DAYS (the list is sorted by due date)
     const upcomingPayments = plannedPayments.filter((payment) => daysBetween(today, payment.due_date) <= UPCOMING_DAYS);
@@ -41,7 +46,11 @@ export default function DashboardPage() {
         transactions.filter((t) => t.date === today),
       ),
       monthSummary: summarize(registers, transactions),
-      isTodayRegisterMissing: !registers.some((r) => r.date === today),
+      // Each branch enters its own register
+      branchesMissingToday: branches.filter(
+        (branch) => !registers.some((r) => r.date === today && r.branch_id === branch.id),
+      ),
+      hasMultipleBranches: branches.length > 1,
       recentTransactions,
       monthTransactions: transactions,
       plannedSummary: summarizePlanned(upcomingPayments, today),
@@ -176,13 +185,26 @@ export default function DashboardPage() {
       />
       <ErrorAlert error={error} />
       {exportError && <Alert variant="error">Excel dosyası oluşturulamadı: {toUserMessage(exportError)}</Alert>}
-      {isLoading && <p className="text-muted">Yükleniyor…</p>}
+      {isLoading && (
+        <div aria-busy="true">
+          <Skeleton width={90} height={18} className="skeleton--title" />
+          <SkeletonStatGrid count={5} />
+          <Skeleton width={130} height={18} className="skeleton--title" />
+          <SkeletonStatGrid count={5} />
+          <section className="card">
+            <Skeleton width={200} height={16} className="skeleton--title" />
+            <SkeletonTable rows={4} columns={5} />
+          </section>
+        </div>
+      )}
 
       {data && (
         <>
-          {data.isTodayRegisterMissing && (
+          {data.branchesMissingToday.length > 0 && (
             <Alert variant="warning">
-              Bugünün kasası henüz girilmedi.{' '}
+              {data.hasMultipleBranches
+                ? `Bugünün kasası girilmeyen şube: ${data.branchesMissingToday.map((branch) => branch.name).join(', ')}.`
+                : 'Bugünün kasası henüz girilmedi.'}{' '}
               {canEdit('daily-register') && <Link to={ROUTES.dailyRegister}>Şimdi gir →</Link>}
             </Alert>
           )}
