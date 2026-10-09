@@ -19,11 +19,11 @@ export function SkeletonTable({ rows = 5, columns = 5 }) {
   const widths = ['70%', '90%', '60%', '80%', '50%', '75%'];
   return (
     <div className="skeleton-table" role="status" aria-label="Yükleniyor">
-      <div className="skeleton-table__row skeleton-table__row--head" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+      <div className="skeleton-table__row skeleton-table__row--head" style={{ '--skeleton-columns': columns }}>
         {Array.from({ length: columns }, (_, column) => <Skeleton key={column} width="55%" height={11} />)}
       </div>
       {Array.from({ length: rows }, (_, row) => (
-        <div key={row} className="skeleton-table__row" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+        <div key={row} className="skeleton-table__row" style={{ '--skeleton-columns': columns }}>
           {Array.from({ length: columns }, (_, column) => (
             <Skeleton key={column} width={widths[(row + column) % widths.length]} />
           ))}

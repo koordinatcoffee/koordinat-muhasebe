@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet, Pencil, Trash2 } from 'lucide-react';
 import {
   deleteTransaction, listCategories, listCounterparties, listInvoiceBalances, listTransactions, saveTransaction,
 } from '../lib/api';
@@ -12,8 +12,8 @@ import { downloadWorkbook } from '../lib/excel';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
 import {
-  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice, SkeletonTable,
-  toUserMessage,
+  Alert, CategorySelect, EmptyState, ErrorAlert, IconButton, MoneyInput, MonthPicker, PageHeader, ReadOnlyNotice,
+  SkeletonTable, toUserMessage,
 } from '../components/ui';
 import {
   contactToFormFields, CounterpartyFields, EMPTY_PAYMENT_FIELDS, InvoiceDebtHint, InvoiceFields, validatePaymentFields,
@@ -368,7 +368,7 @@ export default function TransactionsPage() {
 
           <ErrorAlert error={transactions.error} />
           {transactions.isLoading ? (
-            <SkeletonTable rows={6} columns={7} />
+            <SkeletonTable rows={6} columns={6} />
           ) : visibleTransactions.length === 0 ? (
             <EmptyState>Bu dönem için kayıt yok.</EmptyState>
           ) : (
@@ -378,12 +378,9 @@ export default function TransactionsPage() {
                   <tr>
                     <th>Tarih</th>
                     <th>Kime ödendi</th>
-                    <th>Kategori</th>
-                    <th>Fatura</th>
-                    <th>Açıklama</th>
-                    <th>Yöntem</th>
+                    <th>Kategori / Açıklama</th>
+                    <th>Fatura / Kalan borç</th>
                     <th className="text-end">Tutar</th>
-                    <th className="text-end">Kalan borç</th>
                     <th aria-label="İşlemler" />
                   </tr>
                 </thead>
@@ -393,25 +390,29 @@ export default function TransactionsPage() {
                     const remaining = remainingOf(transaction);
                     return (
                       <tr key={transaction.id} className={form.id === transaction.id ? 'is-selected' : undefined}>
-                        <td data-label="Tarih">{formatDate(transaction.date)}</td>
+                        <td data-label="Tarih"><span className="nowrap">{formatDate(transaction.date)}</span></td>
                         <td data-label="Kime ödendi">
                           {transaction.counterparty || '—'}
                           {contact?.recipient_name && <div className="text-small">Alıcı: {contact.recipient_name}</div>}
                           {contact?.phone && <div className="text-muted text-small">{contact.phone}</div>}
                           {contact?.iban && <div className="text-muted text-small mono">{formatIban(contact.iban)}</div>}
                         </td>
-                        <td data-label="Kategori">{transaction.category || '—'}</td>
+                        <td data-label="Kategori">
+                          {transaction.category || '—'}
+                          {transaction.description && <div className="text-muted text-small">{transaction.description}</div>}
+                        </td>
                         <td data-label="Fatura">
                           {transaction.invoice_no || '—'}
                           {transaction.invoice_amount && (
-                            <div className="text-muted text-small">{formatCurrency(transaction.invoice_amount)}</div>
+                            <div className="text-muted text-small">Tutar {formatCurrency(transaction.invoice_amount)}</div>
+                          )}
+                          {remaining !== null && (
+                            <div className={`text-small ${remaining > 0 ? 'text-strong' : 'text-muted'}`}>Kalan {formatCurrency(remaining)}</div>
                           )}
                         </td>
-                        <td data-label="Açıklama" className="text-muted">{transaction.description}</td>
-                        <td data-label="Yöntem">{PAYMENT_METHOD_LABELS[transaction.payment_method]}</td>
-                        <td data-label="Tutar" className="text-end text-negative">{formatCurrency(transaction.amount)}</td>
-                        <td data-label="Kalan borç" className={`text-end ${remaining > 0 ? 'text-strong' : 'text-muted'}`}>
-                          {remaining === null ? '—' : formatCurrency(remaining)}
+                        <td data-label="Tutar" className="text-end">
+                          <span className="text-negative text-strong nowrap">{formatCurrency(transaction.amount)}</span>
+                          <div className="text-muted text-small">{PAYMENT_METHOD_LABELS[transaction.payment_method]}</div>
                         </td>
                         <td className="row-actions">
                           {isEditable && (
@@ -421,8 +422,8 @@ export default function TransactionsPage() {
                                 <span className="badge badge--info" title="Personel Avansları sayfasından düzenlenir">Personel</span>
                               ) : (
                                 <>
-                                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(transaction)}>Düzenle</button>
-                                  <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(transaction)}>Sil</button>
+                                  <IconButton label="Düzenle" onClick={() => startEditing(transaction)}><Pencil size={15} /></IconButton>
+                                  <IconButton label="Sil" tone="negative" onClick={() => handleDelete(transaction)}><Trash2 size={15} /></IconButton>
                                 </>
                               )}
                             </>

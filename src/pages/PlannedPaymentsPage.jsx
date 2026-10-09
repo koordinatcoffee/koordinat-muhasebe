@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet, Pencil, Trash2 } from 'lucide-react';
 import {
   deletePlannedPayment, listCategories, listCounterparties, listInvoiceBalances, listPendingPlannedPayments,
   payPlannedPayment, savePlannedPayment, setPlannedPaymentUnpaid,
@@ -15,7 +15,8 @@ import { ROUTES } from '../config/navigation';
 import { useAsync } from '../hooks/useAsync';
 import { useAccess } from '../hooks/useAccess';
 import {
-  Alert, CategorySelect, EmptyState, ErrorAlert, MoneyInput, PageHeader, ReadOnlyNotice, SkeletonStatGrid, SkeletonTable,
+  Alert, CategorySelect, EmptyState, ErrorAlert, IconButton, MoneyInput, PageHeader, ReadOnlyNotice, SkeletonStatGrid,
+  SkeletonTable,
   StatCard, toUserMessage,
 } from '../components/ui';
 import {
@@ -398,7 +399,7 @@ export default function PlannedPaymentsPage() {
           </div>
 
           {payments.isLoading ? (
-            <SkeletonTable rows={6} columns={7} />
+            <SkeletonTable rows={6} columns={6} />
           ) : visiblePayments.length === 0 ? (
             <EmptyState>{statusFilter === 'unpaid' ? 'Ödenmedi işaretli ödeme yok.' : 'Bekleyen ödeme yok.'}</EmptyState>
           ) : (
@@ -407,14 +408,10 @@ export default function PlannedPaymentsPage() {
                 <thead>
                   <tr>
                     <th>Ödeme tarihi</th>
-                    <th>Durum</th>
                     <th>Kime</th>
-                    <th>Kategori</th>
-                    <th>Fatura</th>
-                    <th>Açıklama</th>
-                    <th>Yöntem</th>
+                    <th>Kategori / Açıklama</th>
+                    <th>Fatura / Kalan borç</th>
                     <th className="text-end">Tutar</th>
-                    <th className="text-end">Kalan borç</th>
                     <th aria-label="İşlemler" />
                   </tr>
                 </thead>
@@ -428,16 +425,16 @@ export default function PlannedPaymentsPage() {
                         key={payment.id}
                         className={form.id === payment.id ? 'is-selected' : payment.marked_unpaid_at ? 'is-unpaid' : undefined}
                       >
-                        <td data-label="Ödeme tarihi">{formatDate(payment.due_date)}</td>
-                        <td data-label="Durum">
-                          <span className={`badge badge--${status.tone}`}>{status.label}</span>
-                          {payment.marked_unpaid_at && (
-                            <div>
+                        <td data-label="Ödeme tarihi">
+                          <span className="nowrap">{formatDate(payment.due_date)}</span>
+                          <div className="cell-badges">
+                            <span className={`badge badge--${status.tone}`}>{status.label}</span>
+                            {payment.marked_unpaid_at && (
                               <span className="badge badge--expense" title={`${formatDate(payment.marked_unpaid_at)} tarihinde işaretlendi`}>
                                 Ödenmedi
                               </span>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                         <td data-label="Kime">
                           {payment.counterparty}
@@ -445,18 +442,20 @@ export default function PlannedPaymentsPage() {
                           {contact?.phone && <div className="text-muted text-small">{contact.phone}</div>}
                           {contact?.iban && <div className="text-muted text-small mono">{formatIban(contact.iban)}</div>}
                         </td>
-                        <td data-label="Kategori">{payment.category || '—'}</td>
+                        <td data-label="Kategori">
+                          {payment.category || '—'}
+                          {payment.description && <div className="text-muted text-small">{payment.description}</div>}
+                        </td>
                         <td data-label="Fatura">
                           {payment.invoice_no || '—'}
                           {payment.invoice_amount && (
-                            <div className="text-muted text-small">{formatCurrency(payment.invoice_amount)}</div>
+                            <div className="text-muted text-small">Tutar {formatCurrency(payment.invoice_amount)}</div>
                           )}
+                          {remaining !== null && <div className="text-small">Kalan {formatCurrency(remaining)}</div>}
                         </td>
-                        <td data-label="Açıklama" className="text-muted">{payment.description}</td>
-                        <td data-label="Yöntem">{PAYMENT_METHOD_LABELS[payment.payment_method]}</td>
-                        <td data-label="Tutar" className="text-end text-strong">{formatCurrency(payment.amount)}</td>
-                        <td data-label="Kalan borç" className="text-end text-muted">
-                          {remaining === null ? '—' : formatCurrency(remaining)}
+                        <td data-label="Tutar" className="text-end">
+                          <span className="text-strong nowrap">{formatCurrency(payment.amount)}</span>
+                          <div className="text-muted text-small">{PAYMENT_METHOD_LABELS[payment.payment_method]}</div>
                         </td>
                         <td className="row-actions">
                           {isEditable && (
@@ -471,8 +470,8 @@ export default function PlannedPaymentsPage() {
                               >
                                 Ödenmedi
                               </button>
-                              <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(payment)}>Düzenle</button>
-                              <button type="button" className="btn btn--ghost btn--sm text-negative" onClick={() => handleDelete(payment)}>Sil</button>
+                              <IconButton label="Düzenle" onClick={() => startEditing(payment)}><Pencil size={15} /></IconButton>
+                              <IconButton label="Sil" tone="negative" onClick={() => handleDelete(payment)}><Trash2 size={15} /></IconButton>
                             </>
                           )}
                         </td>

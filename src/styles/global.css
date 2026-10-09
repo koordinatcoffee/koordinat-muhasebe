@@ -195,6 +195,7 @@ code { background: var(--color-primary-soft); padding: 1px 5px; border-radius: 4
 .branch-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
 .branch-list__item { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 6px 4px; border-bottom: 1px solid var(--color-border); }
 .branch-list__item:last-child { border-bottom: 0; }
+.branch-list__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 .inline-form--compact { flex: 1; margin-bottom: 0; }
 .branch-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 16px; }
 .branch-select { width: auto; min-width: 200px; }
@@ -222,7 +223,7 @@ code { background: var(--color-primary-soft); padding: 1px 5px; border-radius: 4
 .boot-skeleton__nav { display: grid; gap: 18px; margin-top: 32px; }
 .skeleton-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .skeleton-chips .skeleton { display: inline-block; }
-.skeleton-table__row { display: grid; gap: 16px; align-items: center; padding: 13px 10px; border-bottom: 1px solid var(--color-border); }
+.skeleton-table__row { display: grid; grid-template-columns: repeat(var(--skeleton-columns, 5), minmax(0, 1fr)); gap: 16px; align-items: center; padding: 13px 10px; border-bottom: 1px solid var(--color-border); }
 .skeleton-table__row--head { padding-top: 4px; }
 .skeleton-table__row:last-child { border-bottom: 0; }
 @keyframes skeleton-shimmer {
@@ -545,6 +546,9 @@ input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var
 .data-table--wide { min-width: 760px; }
 
 .row-actions { width: 1%; text-align: right; white-space: nowrap; }
+.btn--icon-sm { min-width: 32px; padding: 4px 8px; }
+.nowrap { white-space: nowrap; }
+.cell-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 
 .grouped-table__group td { padding-top: 11px; border-bottom: 0; font-weight: 700; }
 .grouped-table__item td { padding-top: 3px; padding-bottom: 3px; border-bottom: 0; font-size: 12.5px; color: #4f5d59; }
@@ -625,10 +629,14 @@ input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var
 /* ==========================================================================
    Responsive
    ========================================================================== */
+@media (max-width: 1600px) {
+  .layout-split { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 1280px) {
   .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid__wide, .form-grid__half { grid-column: span 2; }
-  .layout-grid, .layout-split { grid-template-columns: minmax(0, 1fr); }
+  .layout-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Tablet & phone: top bar + off-canvas sidebar */
@@ -733,9 +741,37 @@ input[type='checkbox'] { width: 16px; height: 16px; margin: 0; accent-color: var
     color: var(--color-text-muted);
     text-align: left;
   }
+  /* Labelled cells: label on the left, the value lines (name, phone, IBAN, badges…) stacked on the right */
+  .data-table--stack td[data-label] {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 12px;
+    justify-items: end;
+  }
+  .data-table--stack td[data-label]::before { grid-column: 1; grid-row: 1; align-self: start; justify-self: start; padding-top: 1px; }
+  .data-table--stack td[data-label] > * { grid-column: 2; max-width: 100%; }
+  .data-table--stack td[data-label] > * + * { margin-top: 2px; }
   .data-table--stack td:not([data-label])::before { content: none; }
   .data-table--stack td:empty { display: none; }
-  .data-table--stack .row-actions { justify-content: flex-end; gap: 8px; width: 100%; }
+  .data-table--stack .row-actions { flex-wrap: wrap; justify-content: flex-end; gap: 8px; width: 100%; white-space: normal; }
+  .data-table--stack .mono { white-space: normal; overflow-wrap: anywhere; }
+  .data-table--stack .balance-text { white-space: normal; }
+  .data-table--stack .cell-badges { justify-content: flex-end; }
+
+  /* Settings: page access rows, branch list, password field */
+  .page-access-row { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+  .page-access-row:last-child { border-bottom: 0; }
+  .branch-list__item { flex-wrap: wrap; padding: 10px 4px; }
+  .branch-list__actions { width: 100%; }
+  .input-with-button { flex-direction: column; }
+  .input-with-button input { flex: none; }
+  .user-form { padding: 12px; }
+
+  /* Branch switcher and skeleton tables */
+  .branch-bar { flex-direction: column; align-items: stretch; }
+  .branch-select { width: 100%; }
+  .skeleton-table__row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .skeleton-table__row > :nth-child(n + 3) { display: none; }
 }
 
 @media (max-width: 380px) {

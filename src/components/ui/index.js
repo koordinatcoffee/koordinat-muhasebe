@@ -2,6 +2,7 @@ export { default as Alert, ErrorAlert, toUserMessage } from './Alert';
 export { default as BranchPicker } from './BranchPicker';
 export { default as CategorySelect } from './CategorySelect';
 export { default as EmptyState } from './EmptyState';
+export { default as IconButton } from './IconButton';
 export { default as MoneyInput } from './MoneyInput';
 export { default as MonthPicker } from './MonthPicker';
 export { default as PageHeader } from './PageHeader';

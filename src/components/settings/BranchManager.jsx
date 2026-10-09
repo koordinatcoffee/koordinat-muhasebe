@@ -98,7 +98,7 @@ export default function BranchManager() {
               ) : (
                 <>
                   <span className="text-strong">{branch.name}</span>
-                  <span className="row-actions">
+                  <span className="branch-list__actions">
                     <button
                       type="button"
                       className="btn btn--ghost btn--sm"
