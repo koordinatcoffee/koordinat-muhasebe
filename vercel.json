@@ -1,0 +1,10 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "koordinat-muhasebe.vercel.app" }],
+      "destination": "https://muhasebe.koordinatcoffee.com/$1",
+      "permanent": true
+    }
+  ]
+}
